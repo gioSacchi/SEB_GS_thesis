@@ -1,0 +1,11 @@
+# For acquisition functions
+    - Check dimentionality and see how to make it robust
+    - Check alternative formualtion regarding sigma and such. How have people implemented it robustly
+
+# For Bayesian optimization
+    - Understand how to structure the objective function and f thing
+    - Write the next point loop
+    - Write a main run loop that executes the bayesian optimization
+
+# For my own
+    - Implement special version of EI

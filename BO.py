@@ -5,28 +5,34 @@ from scipy.optimize import minimize
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from sklearn.gaussian_process.kernels import Matern, ConstantKernel
 from BO_util import plot_approximation, plot_acquisition, plot_convergence
+from acquisition import pre_acquisition
 
 class BayesianOptimization:
-    def __init__(self, f, obj_func, acqiuisition='EI', kernel=None, noise_std=1e-5, bounds=None, n_init=2, n_iter=10, random_state=1234):
+    def __init__(self, f, obj_func = None, acquisition='EI', kernel=None, noise_std=1e-5, bounds=None, n_init=2, n_iter=10, random_state=1234):
         self.f = f
-        self.obj_func = obj_func
+        # if f is not the objective function, obj_func is the objective function
+        # obj_func should be callable function that takes in X and f(X) (or surrogate of f) as input and returns the objective function value
+        self.obj_func = obj_func if obj_func != None else f
 
-        acqiuisitions = ['EI', 'PI', 'UCB']
-        if acqiuisition in acqiuisitions:
-            # Acqiuisition function is one of the predefined functions
-            self.acquisition = self.get_acquisition(acqiuisition)
+        acqiuisitions = ['EI', 'PI', 'UCB', 'LCB']
+        if acquisition in acqiuisitions:
+            # Acqiuisition function is one of the predefined functions, will return callable function
+            self.acquisition = self.get_acquisition(acquisition)
         else:
             # Custome acqiuisition function is passed and should be callable function
-            self.acquisition = acqiuisition
-            
+            self.acquisition = acquisition
+
         self.bounds = bounds
         self.n_init = n_init
         self.n_iter = n_iter
+
         # set seed
         np.random.seed(random_state)
+
         # initialize samples
         self.X_sample = None
         self.Y_sample = None
+        self.obj_sample = None
         self.init_sample()
 
         self.X_next = None
@@ -44,6 +50,36 @@ class BayesianOptimization:
         Y_sample = self.f(X_sample)
         self.X_sample = X_sample
         self.Y_sample = Y_sample
+        self.obj_sample = self.obj_func(X_sample, Y_sample) if self.obj_func != self.f else Y_sample
+
+
+    def get_acquisition(self, acquisition: str):
+        return pre_acquisition().get_standard_acquisition(acquisition)
+
+
+    def next_sample(self):
+        self.gpr.fit(self.X_sample, self.Y_sample)
+
+        min_val = 1e100
+        min_x = None
+
+        for x0 in np.random.uniform(self.bounds[:, 0], self.bounds[:, 1], size=(self.n_iter, self.bounds.shape[0])):
+            res = minimize(lambda X: -self.acquisition(X.reshape(-1, 1), self.X_sample, self.Y_sample, self.gpr).flatten(), x0=x0, bounds=self.bounds, method='L-BFGS-B')
+            if res.fun < min_val:
+                min_val = res.fun[0]
+                min_x = res.x
+
+        X_next = self.acquisition(self.gpr, self.bounds, self.X_sample, self.Y_sample)
+        Y_next = self.f(X_next)
+        self.X_next = X_next
+        self.Y_next = Y_next
+    
+    def run(self):
+        for i in range(self.n_iter):
+            self.next_sample()
+            self.X_sample = np.vstack((self.X_sample, self.X_next))
+            self.Y_sample = np.vstack((self.Y_sample, self.Y_next))
+        return self.X_sample, self.Y_sample
 
     
 
@@ -67,38 +103,13 @@ def expected_improvement(X, X_sample, Y_sample, gpr, xi=0.01):
     '''
     mu, sigma = gpr.predict(X, return_std=True)
     mu_sample = gpr.predict(X_sample)
-
     sigma = sigma.reshape(-1, 1)
-    
     # Needed for noise-based model,
     # otherwise use np.max(Y_sample).
     # See also section 2.4 in [1]
     mu_sample_opt = np.max(mu_sample)
 
     with np.errstate(divide='warn'):
-        # small_sigma_idxs = np.where(sigma < 10**(-8))[0]
-
-
-        # if len(small_sigma_idxs) == 0:
-        #     imp = mu - mu_sample_opt - xi
-        #     Z = imp / sigma
-        #     ei = imp * norm.cdf(Z) + sigma * norm.pdf(Z)
-        
-        # elif 0 < len(small_sigma_idxs) < len(sigma):
-        #     # sets all values to 0
-        #     ei = np.zeros_like(sigma)
-
-        #     # updates only non zero indices according to formula
-        #     non_zero_idxs = np.where(sigma >= 10**(-8))[0]
-        #     imp = mu[non_zero_idxs] - mu_sample_opt - xi
-        #     Z = imp / sigma[non_zero_idxs]
-        #     ei[non_zero_idxs] = imp * norm.cdf(Z) + sigma[non_zero_idxs] * norm.pdf(Z)
-        # else:
-        #     # sets all values to 0 becasue all sigma are 0
-        #     ei = np.zeros_like(sigma)     
-        #     print('sigma is 0')
-
-        # old version
         imp = mu - mu_sample_opt - xi
         Z = imp / sigma
         ei = imp * norm.cdf(Z) + sigma * norm.pdf(Z)
@@ -150,7 +161,7 @@ def bay_opt():
 
     # Gaussian process with Matérn kernel as surrogate model
     m52 = ConstantKernel(1.0) * Matern(length_scale=1.0, nu=2.5)
-    gpr = GPR(kernel=m52, alpha=noise**2)
+    gpr = GPR(kernel=m52, alpha=noise**2, n_restarts_optimizer=10)
 
     # Initialize samples
     X_sample = X_init
