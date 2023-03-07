@@ -14,7 +14,7 @@ class BayesianOptimization:
         self.f = f
         # if f is not the objective function, obj_func is the objective function
         # obj_func should be callable function that takes in X and f(X) (or surrogate of f) as input and returns the objective function value
-        self.obj_func = obj_func if obj_func else f
+        self.obj_func = obj_func
 
         acqiuisitions = ['EI', 'PI', 'UCB', 'LCB']
         if acquisition in acqiuisitions:
@@ -22,6 +22,7 @@ class BayesianOptimization:
             self.acquisition = self.get_acquisition(acquisition)
         else:
             # Custome acqiuisition function is passed and should be callable function
+            # takes as input X, model, opt, xi (optional)
             self.acquisition = acquisition
 
         self.bounds = bounds
@@ -32,14 +33,11 @@ class BayesianOptimization:
         np.random.seed(random_state)
 
         # initialize samples
-        self.X_sample = None
-        self.Y_sample = None
-        self.obj_sample = None
-        self.init_sample()
+        self.X_samples = None
+        self.Y_samples = None
+        self.obj_samples = None
+        self.init_samples()
 
-        self.X_next = None
-        self.Y_next = None
-        self.obj_next = None
         self.opt_val = None
 
         self.noisy_evaluations = True if noise_std > 0 else False
@@ -47,54 +45,46 @@ class BayesianOptimization:
         # initialize GP
         self.model = GPmodel(kernel=kernel, noise=noise_std)
 
-    def init_sample(self):
+    def init_samples(self):
         # initialize samples by sampling Xs uniformly from the bounds and computing Ys
-        X_sample = np.random.uniform(self.bounds[:, 0], self.bounds[:, 1], size=(self.n_init, self.bounds.shape[0]))
-        Y_sample = self.f(X_sample)
-        self.X_sample = X_sample
-        self.Y_sample = Y_sample
-        # if we have objective function compute the objective function values store opt, use Y otherwise
+        X_samples = np.random.uniform(self.bounds[:, 0], self.bounds[:, 1], size=(self.n_init, self.bounds.shape[0]))
+        Y_samples = self.f(X_samples)
+        self.X_samples = X_samples
+        self.Y_samples = Y_samples
+        # if we have objective function, compute objective function values
         if self.obj_func is not None:
-            self.obj_sample = self.obj_func(X_sample, Y_sample)
-            self.opt_val = np.min(self.Y_sample)
-        else:
-            self.opt_val = np.min(self.obj_sample)
-
+            self.obj_samples = self.obj_func(X_samples, Y_samples)
+        # compute opt_val
+        self.update_opt()
 
     def get_acquisition(self, acquisition: str):
         # return callable function for acquisition function
         return pre_acquisition().get_standard_acquisition(acquisition)
 
-    def update_sample(self, X_next, Y_next, obj_next=None):
-        # update samples
-        self.X_sample = np.vstack((self.X_sample, X_next))
-        self.Y_sample = np.vstack((self.Y_sample, Y_next))
+    def update_samples(self, X_next, Y_next, obj_next=None):
+        # update samples incl. objective function values if available
+        self.X_samples = np.vstack((self.X_samples, X_next))
+        self.Y_samples = np.vstack((self.Y_samples, Y_next))
             
         if obj_next is not None:
-            self.obj_sample = np.vstack((self.obj_sample, obj_next))
+            self.obj_samples = np.vstack((self.obj_samples, obj_next))
         
     def update_opt(self):
         # if we have objective function use that for opt_val, otherwise use Y
         # if noisy then use mean of GP
         if not self.noisy_evaluations:
             if self.obj_func is not None:
-                self.opt_val = np.min(self.obj_sample)
+                self.opt_val = np.min(self.obj_samples)
             else:
-                self.opt_val = np.min(self.Y_sample)
+                self.opt_val = np.min(self.Y_samples)
         else:
-            pred_mu = self.model.predict(self.X_sample)[0]
+            pred_mu = self.model.predict(self.X_samples)[0]
             if self.obj_func is not None:
-                self.opt_val = np.min(self.obj_func(self.X_sample, pred_mu)) # TODO Check this
+                self.opt_val = np.min(self.obj_func(self.X_samples, pred_mu)) # TODO Check this
             else:
                 self.opt_val = np.min(pred_mu)
 
     def next_sample(self):
-        # fit GP to samples
-        self.model.fit(self.X_sample, self.Y_sample)
-
-        # update opt_val
-        self.update_opt()
-
         # init min value and min x for optimization of acquisition function
         min_val = 1e100
         min_x = None
@@ -113,34 +103,25 @@ class BayesianOptimization:
                 min_x = res.x
 
         # TODO: add logic for objective function
-
         # store next sample
-        self.X_next = min_x # look at shape
-        # if f is objective function then min_val, otherwise compute f(x_next) and store it
-        self.Y_next = min_val if self.obj_func == self.f else self.f(self.X_next) 
-        # if obj_func is not f then min_val, otherwise compute obj_func(x_next, f(x_next)) and store it
-        # self.obj_next = min_val if self.obj_func != self.f else self.obj_func(self.X_next, self.Y_next)
+        X_next = min_x # look at shape
+        Y_next = self.f(X_next) 
+        # if we have objective function compute
+        if self.obj_func is not None:
+            obj_next = self.obj_func(X_next, Y_next)
+        
+        return X_next, Y_next, obj_next
     
-    def run_standard(self):
+    def run_BO(self):
         for _ in range(self.n_iter):
-            self.next_sample()
-            self.X_sample = np.vstack((self.X_sample, self.X_next))
-            self.Y_sample = np.vstack((self.Y_sample, self.Y_next))
-        return self.X_sample, self.Y_sample
-
-    def run_composite(self):
-        for _ in range(self.n_iter):
-            self.next_sample()
-            self.X_sample = np.vstack((self.X_sample, self.X_next))
-            self.Y_sample = np.vstack((self.Y_sample, self.Y_next))
-            self.obj_sample = np.vstack((self.obj_sample, self.obj_func(self.X_next, self.Y_next)))
-        return self.X_sample, self.Y_sample, self.obj_sample
-    
-    def run_BayesOpt(self):
-        if self.obj_func == self.f:
-            return self.run_standard()
-        else:
-            return self.run_composite()
+            # fit GP to samples
+            self.model.fit(self.X_samples, self.Y_samples)
+            # get next sample
+            X_next, Y_next, obj_next = self.next_sample()
+            # update samples
+            self.update_samples(X_next, Y_next, obj_next)
+            # update opt_val
+            self.update_opt()
     
     def make_plots(self):
         # Dense grid of points within bounds
@@ -148,22 +129,22 @@ class BayesianOptimization:
         Y = self.f(X,0)
         gpr = GPR(kernel=self.kernel, alpha=(1e-5)**2, n_restarts_optimizer=10)
         for i in range(self.n_iter):
-            X_sample = self.X_sample[:i+1, :]
-            Y_sample = self.Y_sample[:i+1, :]
-            gpr.fit(X_sample, Y_sample)
-            X_next = self.X_sample[i+1, :]
-            Y_next = self.Y_sample[i+1, :]
+            X_samples = self.X_samples[:i+1, :]
+            Y_samples = self.Y_samples[:i+1, :]
+            gpr.fit(X_samples, Y_samples)
+            X_next = self.X_samples[i+1, :]
+            Y_next = self.Y_samples[i+1, :]
             # Plot samples, surrogate function, noise-free objective and next sampling location
             plt.subplot(self.n_iter, 2, 2 * i + 1)
-            plot_approximation(gpr, X, Y, X_sample, Y_sample, X_next, show_legend=i==0)
+            plot_approximation(gpr, X, Y, X_samples, Y_samples, X_next, show_legend=i==0)
             plt.title(f'Iteration {i+1}')
 
             plt.subplot(self.n_iter, 2, 2 * i + 2)
-            plot_acquisition(X, expected_improvement(X, X_sample, Y_sample, gpr), X_next, show_legend=i==0)
+            plot_acquisition(X, expected_improvement(X, X_samples, Y_samples, gpr), X_next, show_legend=i==0)
                 
             # Add sample to previous samples
-            X_sample = np.vstack((X_sample, X_next))
-            Y_sample = np.vstack((Y_sample, Y_next))
+            X_samples = np.vstack((X_samples, X_next))
+            Y_samples = np.vstack((Y_samples, Y_next))
 
 
 
