@@ -1,6 +1,7 @@
 # For acquisition functions
     - Check dimentionality and see how to make it robust
     - Check alternative formualtion regarding sigma and such. How have people implemented it robustly
+    - Gradients?
 
 # For Bayesian optimization
     - Understand how to structure the objective function and f thing
@@ -9,3 +10,5 @@
 
 # For my own
     - Implement special version of EI
+    - Add dimension checks in GPmodel class
+    - Think about the equivalent of mu_opt for composit case!! 

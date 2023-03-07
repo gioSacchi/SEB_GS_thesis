@@ -19,12 +19,13 @@ class pre_acquisition():
             raise ValueError('Acquisition function not supported')
 
     # TODO: look into alternative implementation of acq funcs, particularly part about sigma
+    # TODO: gradient of acq funcs ?
 
-    def expected_improvement(self, X, X_samples, gpr, Y_samples = None, noisy_obs=False, xi=0.01):
+    def expected_improvement(self, X, gpr, opt, xi=0.01):
         # Expected improvement acquisition function, xi does NOT mean no exploration
         mu, std = gpr.predict(X, return_std=True)
-        opt = np.min(gpr.predict(X_samples)) if noisy_obs else np.min(Y_samples)
         # clip std to avoid numerical error
+        # std = np.clip(std, 1e-5, np.inf) from GpyOpt
         std = np.maximum(std, 1e-9)
         imp = opt + xi - mu
         Z = imp/std
@@ -77,14 +78,14 @@ class pre_acquisition():
         Z = (opt + xi- mu) / std
         return norm.cdf(Z)
     
-    def upper_confidence_bound(self, X, gpr, xi=0):
+    def upper_confidence_bound(self, X, gpr, opt, xi=0):
         # For maximization problem
         # xi 0 means no exploration at all
         mu, std = gpr.predict(X, return_std=True)
         std = np.maximum(std, 1e-9)
         return mu + xi * std
     
-    def lower_confidence_bound(self, X, gpr, xi=0):
+    def lower_confidence_bound(self, X, gpr, opt, xi=0):
         # For minimization problem
         # xi 0 means no exploration at all
         mu, std = gpr.predict(X, return_std=True)
