@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-def plot_approximation(gpr, X, Y, X_sample, Y_sample, X_next=None, show_legend=False):
+def plot_approximation2D(gpr, X, Y, X_sample, Y_sample, X_next=None, show_legend=False):
     mu, std = gpr.predict(X, return_std=True)
     plt.fill_between(X.ravel(), 
                      mu.ravel() + 1.96 * std, 
@@ -42,3 +42,22 @@ def plot_convergence(X_sample, Y_sample, n_init=2):
     plt.xlabel('Iteration')
     plt.ylabel('Best Y')
     plt.title('Value of best selected sample')
+
+def plot_approximation3D(gpr, X, X1, X2, Y, X_sample, Y_sample, ax, X_next=None, show_legend=False):
+    # where X, Y are 2D meshgrid of the domain 
+    # X_sample, Y_sample are 2D arrays of the sample points
+    # X_next is a 1D array of the next sample point
+
+    mu, std = gpr.predict(X, return_std=True)
+    # std = std.reshape(-1,1)
+    mu = mu.reshape(X1.shape)
+    std = std.reshape(X1.shape)
+    ax.plot_surface(X1, X2, Y, alpha=0.5)
+    ax.plot_surface(X1, X2, mu, alpha=0.5)
+    ax.plot_surface(X1, X2, mu + 1.96 * std, alpha=0.1)
+    ax.plot_surface(X1, X2, mu - 1.96 * std, alpha=0.1)
+    ax.plot3D(X_sample[:, 0], X_sample[:, 1], Y_sample.ravel(), 'kx', mew=3, label='Noisy samples')
+    if X_next is None:
+        ax.plot(X_next[0], X_next[1], 'kx', mew=3)
+    if show_legend:
+        ax.legend()
