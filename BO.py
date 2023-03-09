@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 from scipy.optimize import minimize
-from BO_util import plot_approximation, plot_acquisition, plot_convergence
+from BO_util import plot_approximation2D, plot_acquisition, plot_convergence, plot_approximation3D
 from acquisition import pre_acquisition
 from Model import GPmodel
 
@@ -10,7 +10,9 @@ from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from sklearn.gaussian_process.kernels import Matern, ConstantKernel
 
 class BayesianOptimization:
-    def __init__(self, f, obj_func = None, acquisition='EI', kernel=None, noise_std=1e-5, bounds=None, n_init=2, n_iter=10, random_state=1234):
+    def __init__(self, f, dim, obj_func = None, acquisition='EI', kernel=None, noise_std=1e-5, bounds=None, n_init=2, n_iter=10, n_opt = 50, random_state=1234):
+        # set seed
+        np.random.seed(random_state)
         self.f = f
         # if f is not the objective function, obj_func is the objective function
         # obj_func should be callable function that takes in X and f(X) (or surrogate of f) as input and returns the objective function value
@@ -25,24 +27,28 @@ class BayesianOptimization:
             # takes as input X, model, opt, xi (optional)
             self.acquisition = acquisition
 
+        self.dim = dim
+        # check bounds dims
+        if bounds is not None:
+            if bounds.shape[0] != self.dim:
+                raise ValueError('Bounds dimension does not match the dimension of the data')
+
         self.bounds = bounds
         self.n_init = n_init
         self.n_iter = n_iter
+        self.n_opt = n_opt
 
-        # set seed
-        np.random.seed(random_state)
+        self.noisy_evaluations = True if noise_std > 0 else False
+        self.opt_val = None
 
         # initialize samples
         self.X_samples = None
         self.Y_samples = None
         self.obj_samples = None
         self.init_samples()
-
-        self.opt_val = None
-
-        self.noisy_evaluations = True if noise_std > 0 else False
-
         # initialize GP
+        self.kernel = kernel
+        self.noise_std = noise_std
         self.model = GPmodel(kernel=kernel, noise=noise_std)
 
     def init_samples(self):
@@ -69,20 +75,34 @@ class BayesianOptimization:
         if obj_next is not None:
             self.obj_samples = np.vstack((self.obj_samples, obj_next))
         
-    def update_opt(self):
+    def compute_opt(self, X_samples=None, Y_samples=None, obj_samples=None):
+        # if not passed, use samples from self
+        if X_samples is None:
+            X_samples = self.X_samples
+        if Y_samples is None:
+            Y_samples = self.Y_samples
+        if obj_samples is None:
+            obj_samples = self.obj_samples
+
         # if we have objective function use that for opt_val, otherwise use Y
         # if noisy then use mean of GP
         if not self.noisy_evaluations:
             if self.obj_func is not None:
-                self.opt_val = np.min(self.obj_samples)
+                opt_val = np.min(obj_samples)
             else:
-                self.opt_val = np.min(self.Y_samples)
+                opt_val = np.min(Y_samples)
         else:
-            pred_mu = self.model.predict(self.X_samples)[0]
+            pred_mu = self.model.predict(X_samples)[0]
             if self.obj_func is not None:
-                self.opt_val = np.min(self.obj_func(self.X_samples, pred_mu)) # TODO Check this
+                opt_val = np.min(self.obj_func(X_samples, pred_mu)) # TODO Check this
             else:
-                self.opt_val = np.min(pred_mu)
+                opt_val = np.min(pred_mu)
+        
+        return opt_val
+
+    def update_opt(self):
+        # update opt_val
+        self.opt_val = self.compute_opt()
 
     def next_sample(self):
         # init min value and min x for optimization of acquisition function
@@ -92,26 +112,48 @@ class BayesianOptimization:
         # define objective function for optimization, minus of acquisition function 
         # since we want to maximize the acquisition function but use minimizer
         def min_obj(x):
-            return -self.acquisition(x, self.model, self.opt_val).flatten()
+            return -self.acquisition(x.reshape(-1, self.dim), self.model, self.opt_val).flatten()
         
-        # optimization loop, initialize x0 randomly n_init times and do optimization for each x0
-        for x0 in np.random.uniform(self.bounds[:, 0], self.bounds[:, 1], size=(self.n_init, self.bounds.shape[0])):
+        # optimization loop, initialize x0 randomly n_opt times and do optimization for each x0
+        for x0 in np.random.uniform(self.bounds[:, 0], self.bounds[:, 1], size=(self.n_opt, self.bounds.shape[0])):
             res = minimize(min_obj, x0=x0, bounds=self.bounds, method='L-BFGS-B')
             # update min value and min x if the current x0 gives better result
             if res.fun < min_val:
                 min_val = res.fun[0]
                 min_x = res.x
+        
+        print('min_val: ', min_val)
+        print('min_x: ', min_x)
 
         # TODO: add logic for objective function
         # store next sample
-        X_next = min_x # look at shape
+        X_next = min_x.reshape(-1, self.dim)
         Y_next = self.f(X_next) 
         # if we have objective function compute
         if self.obj_func is not None:
             obj_next = self.obj_func(X_next, Y_next)
-        
+        else:
+            obj_next = None
         return X_next, Y_next, obj_next
     
+    def check_and_fix_dimenstion(self, X):
+        # check if X is 2D array and if not reshape it
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+            if X.shape[1] != self.dim:
+                raise ValueError('X should have same number of coloms as dim, shape of X is {} but should be (n_samples, dim)'.format(X.shape))
+        elif X.ndim == 2:
+            # check if X has correct shape, ie (n_samples, dim). Try to reshape if not
+            if X.shape[1] != self.dim:
+                try:
+                    X = X.reshape(-1, self.dim)
+                except ValueError:
+                    raise ValueError('X should have same number of coloms as dim, shape of X is {} but should be (n_samples, dim)'.format(X.shape))
+        else:
+            raise ValueError('X should be 1D or 2D array with shape (n_samples, dim), but shape is {}'.format(X.shape))
+        
+        return X
+
     def run_BO(self):
         for _ in range(self.n_iter):
             # fit GP to samples
@@ -123,175 +165,74 @@ class BayesianOptimization:
             # update opt_val
             self.update_opt()
     
+    def make_3D_plots(self):
+        # make grid of point between bounds with step 0.01 and format it to 2D array with shape (n_samples, dim)
+        X1, X2 = np.meshgrid(*[np.arange(bound[0], bound[1], 0.01) for bound in self.bounds])
+        X = np.vstack(map(np.ravel, [X1, X2])).T
+        Y = self.f(X,0).reshape(X1.shape)
+        
+        plt.figure(figsize=(12, self.n_iter * 3))
+        plt.subplots_adjust(hspace=0.4)
+        model = GPmodel(kernel=self.kernel, noise=self.noise_std)
+        for i in range(self.n_iter):
+            elem_i = i + self.n_init
+            X_samples = self.X_samples[:elem_i, :]
+            Y_samples = self.Y_samples[:elem_i, :]
+            model.fit(X_samples, Y_samples)
+            X_next = self.X_samples[elem_i, :]
+            Y_next = self.Y_samples[elem_i, :]
+            # Plot samples
+            # ax = plt.subplot(self.n_iter, 2, 2 * i + 1, projection='3d')
+            if i%10 == 0:
+                ax = plt.figure().add_subplot(111, projection='3d')
+                plot_approximation3D(model, X, X1, X2, Y, X_samples, Y_samples, ax, X_next, Y_next)
+                plt.title(f"Iteration {i + 1}")
+        
+        plt.show()
+
     def make_plots(self):
         # Dense grid of points within bounds
         X = np.arange(self.bounds[:, 0], self.bounds[:, 1], 0.01).reshape(-1, 1)
+
         Y = self.f(X,0)
-        gpr = GPR(kernel=self.kernel, alpha=(1e-5)**2, n_restarts_optimizer=10)
+        plt.figure(figsize=(12, self.n_iter * 3))
+        plt.subplots_adjust(hspace=0.4)
+        model = GPmodel(kernel=self.kernel, noise=self.noise_std)
         for i in range(self.n_iter):
-            X_samples = self.X_samples[:i+1, :]
-            Y_samples = self.Y_samples[:i+1, :]
-            gpr.fit(X_samples, Y_samples)
-            X_next = self.X_samples[i+1, :]
-            Y_next = self.Y_samples[i+1, :]
+            elem_i = i + self.n_init
+            X_samples = self.X_samples[:elem_i, :]
+            Y_samples = self.Y_samples[:elem_i, :]
+            model.fit(X_samples, Y_samples)
+            X_next = self.X_samples[elem_i, :]
+            Y_next = self.Y_samples[elem_i, :]
             # Plot samples, surrogate function, noise-free objective and next sampling location
             plt.subplot(self.n_iter, 2, 2 * i + 1)
-            plot_approximation(gpr, X, Y, X_samples, Y_samples, X_next, show_legend=i==0)
+            plot_approximation2D(model, X, Y, X_samples, Y_samples, X_next, show_legend=i==0)
             plt.title(f'Iteration {i+1}')
 
             plt.subplot(self.n_iter, 2, 2 * i + 2)
-            plot_acquisition(X, expected_improvement(X, X_samples, Y_samples, gpr), X_next, show_legend=i==0)
+            opt = self.compute_opt(X_samples, Y_samples)
+            plot_acquisition(X, self.acquisition(X, model, opt), X_next, show_legend=i==0)
                 
             # Add sample to previous samples
             X_samples = np.vstack((X_samples, X_next))
             Y_samples = np.vstack((Y_samples, Y_next))
-
-
-
-def hehj():
-    bounds = np.array([[-1.0, 2.0]])
-    bo = BayesianOptimization(f, bounds=bounds, n_iter=5, n_init=5)
-    bo.run_BayesOpt()
-    bo.make_plots()
-
-
+        plt.show()
+            
 
 def f(X, noise=0):
-    return -np.sin(3*X) - X**2 + 0.7*X + noise * np.random.randn(*X.shape)
+    return -np.sin(5*X) - X**2 + 0.7*X + noise * np.random.randn(*X.shape)
 
-def expected_improvement(X, X_sample, Y_sample, gpr, xi=0.01):
-    '''
-    Computes the EI at points X based on existing samples X_sample
-    and Y_sample using a Gaussian process surrogate model.
-    
-    Args:
-        X: Points at which EI shall be computed (m x d).
-        X_sample: Sample locations (n x d).
-        Y_sample: Sample values (n x 1).
-        gpr: A GaussianProcessRegressor fitted to samples.
-        xi: Exploitation-exploration trade-off parameter.
-    
-    Returns:
-        Expected improvements at points X.
-    '''
-    mu, sigma = gpr.predict(X, return_std=True)
-    mu_sample = gpr.predict(X_sample)
-    sigma = sigma.reshape(-1, 1)
-    # Needed for noise-based model,
-    # otherwise use np.max(Y_sample).
-    # See also section 2.4 in [1]
-    mu_sample_opt = np.max(mu_sample)
+def g(X, noise=0):
+    X = np.sum(X, axis=1).reshape(-1, 1)
+    return -np.sin(5*X) - X**2 + 0.7*X + noise * np.random.randn(*X.shape)
 
-    with np.errstate(divide='warn'):
-        imp = mu - mu_sample_opt - xi
-        Z = imp / sigma
-        ei = imp * norm.cdf(Z) + sigma * norm.pdf(Z)
-        ei[sigma == 0.0] = 0.0
-
-    return ei
-
-def propose_location(acquisition, X_sample, Y_sample, gpr, bounds, n_restarts=25):
-    '''
-    Proposes the next sampling point by optimizing the acquisition function.
-    
-    Args:
-        acquisition: Acquisition function.
-        X_sample: Sample locations (n x d).
-        Y_sample: Sample values (n x 1).
-        gpr: A GaussianProcessRegressor fitted to samples.
-
-    Returns:
-        Location of the acquisition function maximum.
-    '''
-    dim = X_sample.shape[1]
-    min_val = 1
-    min_x = None
-    
-    def min_obj(X):
-        # Minimization objective is the negative acquisition function
-        return -acquisition(X.reshape(-1, dim), X_sample, Y_sample, gpr).flatten()
-    
-    # Find the best optimum by starting from n_restart different random points.
-    for x0 in np.random.uniform(bounds[:, 0], bounds[:, 1], size=(n_restarts, dim)):
-        res = minimize(min_obj, x0=x0, bounds=bounds, method='L-BFGS-B')        
-        if res.fun < min_val:
-            min_val = res.fun[0]
-            min_x = res.x           
-            
-    return min_x.reshape(-1, 1)
-
-
-def bay_opt():
-    bounds = np.array([[-1.0, 2.0]])
-    noise = 0
-
-    X_init = np.array([[-0.9], [1.1]])
-    Y_init = f(X_init, noise)
-
-    # Dense grid of points within bounds
-    X = np.arange(bounds[:, 0], bounds[:, 1], 0.01).reshape(-1, 1)
-    Y = f(X,noise)
-
-    # Gaussian process with Matérn kernel as surrogate model
-    m52 = ConstantKernel(1.0) * Matern(length_scale=1.0, nu=2.5)
-    gpr = GPR(kernel=m52, alpha=noise**2, n_restarts_optimizer=10)
-
-    # Initialize samples
-    X_sample = X_init
-    Y_sample = Y_init
-
-    # Number of iterations
-    n_iter = 10
-
-    plt.figure(figsize=(12, n_iter * 3))
-    plt.subplots_adjust(hspace=0.4)
-
-    for i in range(n_iter):
-        # Update Gaussian process with existing samples
-        gpr.fit(X_sample, Y_sample)
-
-        # Obtain next sampling point from the acquisition function (expected_improvement)
-        X_next = propose_location(expected_improvement, X_sample, Y_sample, gpr, bounds)
-        
-        # Obtain next noisy sample from the objective function
-        Y_next = f(X_next, noise)
-        
-        # Plot samples, surrogate function, noise-free objective and next sampling location
-        plt.subplot(n_iter, 2, 2 * i + 1)
-        plot_approximation(gpr, X, Y, X_sample, Y_sample, X_next, show_legend=i==0)
-        plt.title(f'Iteration {i+1}')
-
-        plt.subplot(n_iter, 2, 2 * i + 2)
-        plot_acquisition(X, expected_improvement(X, X_sample, Y_sample, gpr), X_next, show_legend=i==0)
-            
-        # Add sample to previous samples
-        X_sample = np.vstack((X_sample, X_next))
-        Y_sample = np.vstack((Y_sample, Y_next))
-    
-    plt.show()
-
-
-
-def first_show():
-    bounds = np.array([[-1.0, 2.0]])
-    noise = 0.2
-
-    X_init = np.array([[-0.9], [1.1]])
-    Y_init = f(X_init)
-
-    # Dense grid of points within bounds
-    X = np.arange(bounds[:, 0], bounds[:, 1], 0.01).reshape(-1, 1)
-
-    # Noise-free objective function values at X 
-    Y = f(X,0)
-
-    # Plot optimization objective with noise level 
-    plt.plot(X, Y, 'y--', lw=2, label='Noise-free objective')
-    plt.plot(X, f(X, noise), 'bx', lw=1, alpha=0.1, label='Noisy samples')
-    plt.plot(X_init, Y_init, 'kx', mew=3, label='Initial samples')
-    plt.legend()
-    plt.show()
+def bo_test():
+    bounds = np.array([[-1.0, 2.0], [-2.0, 1.0]])
+    bo = BayesianOptimization(g, 2, bounds=bounds, n_iter=100, n_init=25, noise_std=0)
+    bo.run_BO()
+    # bo.make_plots()
+    bo.make_3D_plots()
 
 if __name__ == "__main__":
-    # bay_opt()
-    hehj()
+    bo_test()

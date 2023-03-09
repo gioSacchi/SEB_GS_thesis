@@ -4,7 +4,7 @@ from sklearn.gaussian_process.kernels import Matern, ConstantKernel
 
 
 class GPmodel(GPR):
-    def __init__(self, X=None, Y=None, kernel=None, noise=0.1, normalize_y=True, n_restarts=10):
+    def __init__(self, X=None, Y=None, kernel=None, noise=0.1, normalize_y=True, n_restarts=20):
         self.X = X
         self.Y = Y
         self.noise = noise
@@ -32,7 +32,7 @@ class GPmodel(GPR):
         self.Y = np.vstack((self.Y, Y_new))
         self.fit(self.X, self.Y)
 
-    def pure_predict(self, X, return_std=True):
+    def predict(self, X, return_std=True):
         return self.gpr.predict(X, return_std=return_std)
 
     def clip_predict(self, X, return_std=True):
