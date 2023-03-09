@@ -22,15 +22,19 @@ class pre_acquisition():
     # TODO: gradient of acq funcs ?
 
     # TODO: update to use GPmodel class
-    def expected_improvement(self, X, model, opt, xi=0.01):
+    def expected_improvement(self, X, model, opt, xi=0.01, eps=1e-8, threshold=1e-7):
         # Expected improvement acquisition function, xi does NOT mean no exploration
         mu, std = model.predict(X, return_std=True)
+        mu = mu.reshape(-1, 1)
+        std = std.reshape(-1, 1)
         # clip std to avoid numerical error
         # std = np.clip(std, 1e-5, np.inf) from GpyOpt
-        std = np.maximum(std, 1e-9)
-        imp = opt + xi - mu
-        Z = imp/std
-        ei = imp * norm.cdf(Z) + std * norm.pdf(Z)
+        std = np.maximum(std, threshold)
+        with np.errstate(divide='warn'):
+            imp = opt + xi - mu
+            Z = imp/std
+            ei = imp * norm.cdf(Z) + std * norm.pdf(Z)
+            ei[std < eps] = 0.0
         
         # # Blog version 
         # mu, sigma = model.predict(X, return_std=True)
