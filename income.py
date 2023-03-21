@@ -8,6 +8,8 @@ from sklearn.linear_model import LinearRegression
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.svm import SVR
 
+from BO import BayesianOptimization
+
 def visualize(df_train):
     """Visualize data"""
     # plot the data points, in 2D if one input feature, in 3D if two input features
@@ -130,9 +132,39 @@ def visualize_f(f, model, x, des_out, lam, df_train):
         print("Cannot visualize data with more than 2 input features")
     plt.show()
 
+def BO_on_regressor(model, df_train):
+    # handle cases of 1 and 2 input features and
+    # define bounds from data and add a margin which is 10% of the range of the data in each dimension
+    # output_data = df_train["Income"]
+    input_data = df_train.drop("Income", axis=1)
+    if input_data.shape[1] == 2:
+        min1 = input_data.iloc[:, 0].min()
+        max1 = input_data.iloc[:, 0].max()
+        min2 = input_data.iloc[:, 1].min()
+        max2 = input_data.iloc[:, 1].max()
+        margin1 = (max1 - min1) * 0.1
+        margin2 = (max2 - min2) * 0.1
+        bounds = np.array([[min1 - margin1, max1 + margin1], [min2 - margin2, max2 + margin2]])
+    elif input_data.shape[1] == 1:
+        min1 = input_data.iloc[:, 0].min()
+        max1 = input_data.iloc[:, 0].max()
+        margin1 = (max1 - min1) * 0.1
+        bounds = np.array([[min1 - margin1, max1 + margin1]])
+    else:
+        print("Cannot optimize data with more than 2 input features")
+        return
+
+    bo = BayesianOptimization(f = model, dim = input_data.shape[1], bounds = bounds, n_iter=10, n_init=5, noise_std=0)
+    bo.run_BO()
+    if input_data.shape[1] == 2:
+        bo.make_3D_plots()
+    else:
+        bo.make_plots()
+
+
 def main():
     """Main function"""
-    data_path = "Income2.csv"
+    data_path = "Income1.csv"
     # read data
     df_train = pd.read_csv(data_path)
     df_train = df_train.rename(columns = lambda x:re.sub('[^A-Za-z0-9_]+', '', x))
@@ -149,13 +181,17 @@ def main():
     model = svr_model_train(df_train)
 
     visualize_regressor(df_train, model)
-    x = np.array([[14, 50]])
-    y_prim = 50
-    lam = 5
-    print("x, punkt i fråga", x)
-    print("y_prim, önskad output", y_prim)
-    print("model.predict(x), nuvarande output", model.predict(x))
-    visualize_f(f, model, x, y_prim, lam, df_train)
+
+    # for seeing objective function
+    # x = np.array([[14, 50]])
+    # y_prim = 50
+    # lam = 5
+    # print("x, punkt i fråga", x)
+    # print("y_prim, önskad output", y_prim)
+    # print("model.predict(x), nuvarande output", model.predict(x))
+    # visualize_f(f, model, x, y_prim, lam, df_train)
+
+    BO_on_regressor(model.predict, df_train)
 
 if __name__ == "__main__":
     main()
