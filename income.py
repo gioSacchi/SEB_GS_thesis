@@ -1,0 +1,161 @@
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score
+import matplotlib.pyplot as plt
+import re
+import numpy as np
+from sklearn.linear_model import LinearRegression
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.svm import SVR
+
+def visualize(df_train):
+    """Visualize data"""
+    # plot the data points, in 2D if one input feature, in 3D if two input features
+    output_data = df_train["Income"]
+    input_data = df_train.drop("Income", axis=1)
+    if input_data.shape[1] == 1:
+        plt.scatter(input_data, output_data)
+        plt.xlabel(df_train.columns[0])
+        plt.ylabel(output_data.name)
+    elif input_data.shape[1] == 2:
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection="3d")
+        ax.scatter(input_data.iloc[:, 0], input_data.iloc[:, 1], output_data)
+        ax.set_xlabel(df_train.columns[0])
+        ax.set_ylabel(df_train.columns[1])
+        ax.set_zlabel(output_data.name)
+    else:
+        print("Cannot visualize data with more than 2 input features")
+    plt.show()
+
+def visualize_regressor(df_train, model):
+    # plot the data points, in 2D if one input feature, in 3D if two input features
+    # generate a grid of points to plot the model's predictions
+    output_data = df_train["Income"]
+    input_data = df_train.drop("Income", axis=1)
+    if input_data.shape[1] == 1:
+        plt.scatter(input_data, output_data)
+        plt.xlabel(df_train.columns[0])
+        plt.ylabel(output_data.name)
+        x_min, x_max = plt.xlim()
+        x = np.linspace(x_min, x_max, 100)
+        y = model.predict(x.reshape(-1, 1))
+        plt.plot(x, y, color="red")
+    elif input_data.shape[1] == 2:
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection="3d")
+        ax.scatter(input_data.iloc[:, 0], input_data.iloc[:, 1], output_data)
+        ax.set_xlabel(df_train.columns[0])
+        ax.set_ylabel(df_train.columns[1])
+        ax.set_zlabel(output_data.name)
+        x_min, x_max = ax.get_xlim()
+        y_min, y_max = ax.get_ylim()
+        x = np.linspace(x_min, x_max, 100)
+        y = np.linspace(y_min, y_max, 100)
+        x, y = np.meshgrid(x, y)
+        z = model.predict(np.c_[x.ravel(), y.ravel()])
+        z = z.reshape(x.shape)
+        ax.plot_surface(x, y, z, alpha=0.2, color="red")
+    else:
+        print("Cannot visualize data with more than 2 input features")
+    plt.show()
+
+def linear_model_train(df_train):
+    X_train, X_test, y_train, y_test = train_test_split(df_train.drop("Income",axis=1), df_train["Income"], test_size=0.2, random_state=2)
+    model = LinearRegression()
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    
+    # evaluate the model
+    print('R2: %.3f' % r2_score(y_test, y_pred))
+    print("pred", y_pred.round(3))
+    print("true", y_test.values.round(3))
+
+    return model
+
+def dct_model_train(df_train):
+    X_train, X_test, y_train, y_test = train_test_split(df_train.drop("Income",axis=1), df_train["Income"], test_size=0.2, random_state=2)
+    model = DecisionTreeRegressor()
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+
+    # evaluate the model
+    print('R2: %.3f' % r2_score(y_test, y_pred))
+    print("pred", y_pred.round(3))
+    print("true", y_test.values.round(3))
+
+    return model
+
+def svr_model_train(df_train):
+    X_train, X_test, y_train, y_test = train_test_split(df_train.drop("Income",axis=1), df_train["Income"], test_size=0.2, random_state=2)
+    model = SVR(degree=3, C=100, epsilon=0.1)
+    # sixdubble the training data by copying it, good for 3D data
+    X_train = np.concatenate((X_train, X_train, X_train, X_train, X_train, X_train), axis=0)
+    y_train = np.concatenate((y_train, y_train, y_train, y_train, y_train, y_train), axis=0)
+    
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+
+    # evaluate the model
+    print('R2: %.3f' % r2_score(y_test, y_pred))
+    print("pred", y_pred.round(3))
+    print("true", y_test.values.round(3))
+
+    return model
+
+def f(x, x_prim, y_prim, model, lam):
+    return np.linalg.norm(x- x_prim, axis=1) + lam * (model.predict(x_prim) - y_prim)**2
+
+def visualize_f(f, model, x, des_out, lam, df_train):
+    # generates grid and plots f, in 2D if one input feature, in 3D if two input features
+    # generate a grid of points to plot the model's predictions
+    if x.shape[1] == 1:
+        x_min, x_max = df_train.iloc[:, 0].min(), df_train.iloc[:, 0].max()
+        x_prim = np.linspace(x_min, x_max, 100).reshape(-1, 1)
+        y = f(x, x_prim, des_out, model, lam)
+        plt.plot(x_prim, y, color="red")
+    elif x.shape[1] == 2:
+        # get min and max of for input feature in training data
+        x_min, x_max = df_train.iloc[:, 0].min(), df_train.iloc[:, 0].max()
+        y_min, y_max = df_train.iloc[:, 1].min(), df_train.iloc[:, 1].max()
+        x_prim = np.linspace(x_min, x_max, 100)
+        y_prim = np.linspace(y_min, y_max, 100)
+        x_prim, y_prim = np.meshgrid(x_prim, y_prim)
+        xy_prim = np.c_[x_prim.ravel(), y_prim.ravel()]
+        z = f(x, xy_prim, des_out, model, lam)
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection="3d")
+        ax.plot_surface(x_prim, y_prim, z.reshape(x_prim.shape), alpha=0.2, color="red")
+    else:
+        print("Cannot visualize data with more than 2 input features")
+    plt.show()
+
+def main():
+    """Main function"""
+    data_path = "Income2.csv"
+    # read data
+    df_train = pd.read_csv(data_path)
+    df_train = df_train.rename(columns = lambda x:re.sub('[^A-Za-z0-9_]+', '', x))
+    df_train = df_train.drop(columns=['Unnamed0'])
+    # print(df_train.head())
+
+    # visualize data
+    # visualize(df_train)
+    # train model
+    # gmb_model_train(df_train)
+    # logistic_model_train(df_train)
+    # model = linear_model_train(df_train)
+    # model = dct_model_train(df_train)
+    model = svr_model_train(df_train)
+
+    visualize_regressor(df_train, model)
+    x = np.array([[14, 50]])
+    y_prim = 50
+    lam = 5
+    print("x, punkt i fråga", x)
+    print("y_prim, önskad output", y_prim)
+    print("model.predict(x), nuvarande output", model.predict(x))
+    visualize_f(f, model, x, y_prim, lam, df_train)
+
+if __name__ == "__main__":
+    main()
