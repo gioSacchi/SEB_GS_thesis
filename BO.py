@@ -10,7 +10,7 @@ from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from sklearn.gaussian_process.kernels import Matern, ConstantKernel
 
 class BayesianOptimization:
-    def __init__(self, f, dim, obj_func = None, acquisition='EI', kernel=None, noise_std=1e-5, bounds=None, n_init=2, n_iter=10, n_opt = 50, random_state=1234):
+    def __init__(self, f, dim, obj_func = None, acquisition='EI', kernel=None, noise_std=1e-5, bounds=None, n_init=2, n_iter=10, n_opt = 50, random_state=1234, n_stop_iter=4):
         # set seed
         np.random.seed(random_state)
         self.f = f
@@ -41,6 +41,10 @@ class BayesianOptimization:
         self.noisy_evaluations = True if noise_std > 0 else False
         self.opt_val = None
 
+        # for stopping BO loop
+        self.stop = False 
+        self.n_stop_iter = n_stop_iter
+
         # initialize samples
         self.X_samples = None
         self.Y_samples = None
@@ -55,13 +59,16 @@ class BayesianOptimization:
         # initialize samples by sampling Xs uniformly from the bounds and computing Ys
         X_samples = np.random.uniform(self.bounds[:, 0], self.bounds[:, 1], size=(self.n_init, self.bounds.shape[0]))
         Y_samples = self.f(X_samples)
+        # check output dimension, if (n_init,) then reshape to (n_init, 1)
+        if Y_samples.shape == (self.n_init,):
+            Y_samples = Y_samples.reshape(-1,1)
         self.X_samples = X_samples
         self.Y_samples = Y_samples
         # if we have objective function, compute objective function values
         if self.obj_func is not None:
             self.obj_samples = self.obj_func(X_samples, Y_samples)
         # compute opt_val
-        self.update_opt()
+        _ = self.update_opt()
 
     def get_acquisition(self, acquisition: str):
         # return callable function for acquisition function
@@ -102,7 +109,11 @@ class BayesianOptimization:
 
     def update_opt(self):
         # update opt_val
-        self.opt_val = self.compute_opt()
+        new_opt = self.compute_opt()
+        if new_opt != self.opt_val:
+            self.opt_val = new_opt
+            return True
+        return False
 
     def next_sample(self):
         # init min value and min x for optimization of acquisition function
@@ -128,10 +139,16 @@ class BayesianOptimization:
         # TODO: add logic for objective function
         # store next sample
         X_next = min_x.reshape(-1, self.dim)
-        Y_next = self.f(X_next) 
+        Y_next = self.f(X_next)
+        # check dimension of Y_next
+        if Y_next.shape == (1,):
+            Y_next = Y_next.reshape(-1,1) 
         # if we have objective function compute
         if self.obj_func is not None:
             obj_next = self.obj_func(X_next, Y_next)
+            # check dimension of obj_next
+            if obj_next.shape == (1,):
+                obj_next = obj_next.reshape(-1,1)
         else:
             obj_next = None
         return X_next, Y_next, obj_next
@@ -153,9 +170,17 @@ class BayesianOptimization:
             raise ValueError('X should be 1D or 2D array with shape (n_samples, dim), but shape is {}'.format(X.shape))
         
         return X
+    
+    def stop_BO(self, opt_iter):
+        # if opt_val has not improved for n_stop_iter iterations, stop BO
+        current_iter = self.X_samples.shape[0]-self.n_init
+        if current_iter - opt_iter >= self.n_stop_iter:
+            self.stop = True
 
     def run_BO(self):
-        for _ in range(self.n_iter):
+        opt_iter = 0
+        # run BO loop
+        for i in range(self.n_iter):
             # fit GP to samples
             self.model.fit(self.X_samples, self.Y_samples)
             # get next sample
@@ -163,13 +188,23 @@ class BayesianOptimization:
             # update samples
             self.update_samples(X_next, Y_next, obj_next)
             # update opt_val
-            self.update_opt()
+            updated = self.update_opt()
+            if updated:
+                opt_iter = i
+            # check if we should stop BO
+            self.stop_BO(opt_iter)
+            if self.stop:
+                break
     
     def make_3D_plots(self):
         # make grid of point between bounds with step 0.01 and format it to 2D array with shape (n_samples, dim)
         X1, X2 = np.meshgrid(*[np.arange(bound[0], bound[1], 0.01) for bound in self.bounds])
         X = np.vstack(map(np.ravel, [X1, X2])).T
-        Y = self.f(X,0).reshape(X1.shape)
+        # alt code
+        # X = np.vstack([X1.ravel(), X2.ravel()]).T
+        # X = np.c_[x_prim.ravel(), y_prim.ravel()]
+        # Y = self.f(X,0).reshape(X1.shape)
+        Y = self.f(X).reshape(X1.shape)
         
         plt.figure(figsize=(12, self.n_iter * 3))
         plt.subplots_adjust(hspace=0.4)
@@ -194,7 +229,8 @@ class BayesianOptimization:
         # Dense grid of points within bounds
         X = np.arange(self.bounds[:, 0], self.bounds[:, 1], 0.01).reshape(-1, 1)
 
-        Y = self.f(X,0)
+        # Y = self.f(X,0)
+        Y = self.f(X)
         plt.figure(figsize=(12, self.n_iter * 3))
         plt.subplots_adjust(hspace=0.4)
         model = GPmodel(kernel=self.kernel, noise=self.noise_std)
@@ -213,26 +249,4 @@ class BayesianOptimization:
             plt.subplot(self.n_iter, 2, 2 * i + 2)
             opt = self.compute_opt(X_samples, Y_samples)
             plot_acquisition(X, self.acquisition(X, model, opt), X_next, show_legend=i==0)
-                
-            # Add sample to previous samples
-            X_samples = np.vstack((X_samples, X_next))
-            Y_samples = np.vstack((Y_samples, Y_next))
         plt.show()
-            
-
-def f(X, noise=0):
-    return -np.sin(5*X) - X**2 + 0.7*X + noise * np.random.randn(*X.shape)
-
-def g(X, noise=0):
-    X = np.sum(X, axis=1).reshape(-1, 1)
-    return -np.sin(5*X) - X**2 + 0.7*X + noise * np.random.randn(*X.shape)
-
-def bo_test():
-    bounds = np.array([[-1.0, 2.0], [-2.0, 1.0]])
-    bo = BayesianOptimization(g, 2, bounds=bounds, n_iter=100, n_init=25, noise_std=0)
-    bo.run_BO()
-    # bo.make_plots()
-    bo.make_3D_plots()
-
-if __name__ == "__main__":
-    bo_test()
