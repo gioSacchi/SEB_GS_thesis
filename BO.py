@@ -10,7 +10,7 @@ from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from sklearn.gaussian_process.kernels import Matern, ConstantKernel
 
 class BayesianOptimization:
-    def __init__(self, f, dim, obj_func = None, acquisition='EI', kernel=None, noise_std=1e-5, bounds=None, n_init=2, n_iter=10, n_opt = 50, random_state=1234, n_stop_iter=4):
+    def __init__(self, f, dim, obj_func = None, acquisition='EI', kernel=None, noise_std=1e-5, bounds=None, n_init=2, n_iter=10, n_opt = 50, random_state=1234, n_stop_iter=5):
         # set seed
         np.random.seed(random_state)
         self.f = f
@@ -193,8 +193,13 @@ class BayesianOptimization:
                 opt_iter = i
             # check if we should stop BO
             self.stop_BO(opt_iter)
-            if self.stop:
-                break
+            # if self.stop:
+            #     print('BO stopped after {} iterations'.format(i))
+            #     break
+        
+        # print final results
+        print('Final opt_val: ', self.opt_val)
+        print('Final opt_x: ', self.X_samples[np.argmin(self.obj_samples)] if self.obj_func is not None else self.X_samples[np.argmin(self.Y_samples)])
     
     def make_3D_plots(self):
         # make grid of point between bounds with step 0.01 and format it to 2D array with shape (n_samples, dim)
@@ -209,7 +214,7 @@ class BayesianOptimization:
         plt.figure(figsize=(12, self.n_iter * 3))
         plt.subplots_adjust(hspace=0.4)
         model = GPmodel(kernel=self.kernel, noise=self.noise_std)
-        for i in range(self.n_iter):
+        for i in range(len(self.X_samples)-self.n_init):
             elem_i = i + self.n_init
             X_samples = self.X_samples[:elem_i, :]
             Y_samples = self.Y_samples[:elem_i, :]
@@ -230,11 +235,11 @@ class BayesianOptimization:
         X = np.arange(self.bounds[:, 0], self.bounds[:, 1], 0.01).reshape(-1, 1)
 
         # Y = self.f(X,0)
-        Y = self.f(X)
-        plt.figure(figsize=(12, self.n_iter * 3))
+        Y = self.f(X).reshape(-1,1)
+        plt.figure(figsize=(12, (len(self.X_samples)-self.n_init) * 3))
         plt.subplots_adjust(hspace=0.4)
         model = GPmodel(kernel=self.kernel, noise=self.noise_std)
-        for i in range(self.n_iter):
+        for i in range(len(self.X_samples)-self.n_init):
             elem_i = i + self.n_init
             X_samples = self.X_samples[:elem_i, :]
             Y_samples = self.Y_samples[:elem_i, :]
