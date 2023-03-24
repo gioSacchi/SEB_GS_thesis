@@ -15,8 +15,7 @@ def bo_test():
     bo = BayesianOptimization(g, 2, bounds=bounds, n_iter=100, n_init=25, noise_std=0)
     # bo = BayesianOptimization(f, 1, bounds=bounds, n_iter=10, n_init=5, noise_std=0)
     bo.run_BO()
-    # bo.make_plots()
-    bo.make_3D_plots()
+    bo.make_plots()
 
 if __name__ == "__main__":
     bo_test()
