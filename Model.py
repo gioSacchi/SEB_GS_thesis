@@ -17,7 +17,8 @@ class GPmodel(GPR):
 
     def create(self):
         if self.kernel is None:
-            self.kernel = ConstantKernel(1.0, (1e-3, 1e3)) * Matern(length_scale=1.0, length_scale_bounds=(1e-2, 1e2), nu=2.5)
+            self.kernel = ConstantKernel(1.0, constant_value_bounds=(1e-3, 1e3)) * Matern(length_scale=1.0, length_scale_bounds=(1e-2, 1e2), nu=2.5)
+            # self.kernel = ConstantKernel(1.0) * Matern(length_scale=1.0, nu=2.5)
         gpr = GPR(kernel=self.kernel, alpha=self.noise**2, n_restarts_optimizer=self.n_restarts)
         # normalize_y=self.normalize_y ??
         return gpr
@@ -25,6 +26,7 @@ class GPmodel(GPR):
     def fit(self, X, Y):
         self.X = X
         self.Y = Y
+        # norm_Y = (Y - np.mean(Y)) / np.std(Y)
         self.gpr.fit(X, Y)
 
     def update(self, X_new, Y_new):
@@ -35,7 +37,7 @@ class GPmodel(GPR):
     def predict(self, X, return_std=True):
         return self.gpr.predict(X, return_std=return_std)
 
-    def clip_predict(self, X, return_std=True):
+    def clip_predict(self, X, lower_clip = 1e-10, return_std=True):
         m, std = self.gpr.predict(X, return_std=return_std)
-        std = np.clip(std, 1e-5, np.inf)
+        std = np.clip(std, lower_clip, np.inf)
         return m, std
