@@ -29,8 +29,10 @@ class CF_acquisition():
         quat = (opt - dist) / self.lam
 
         if self.g_inv is None: # standard Watcher et al. CF formulation
-            UB = self.desired_output + np.sqrt(quat)
-            LB = self.desired_output - np.sqrt(quat)
+            # ingore warning about invalid value encountered in sqrt
+            with np.errstate(invalid='ignore'):
+                UB = self.desired_output + np.sqrt(quat)
+                LB = self.desired_output - np.sqrt(quat)
         else:
             pass # TODO: implement this using g_inv
             
