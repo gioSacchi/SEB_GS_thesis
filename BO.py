@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 from scipy.optimize import minimize
-from BO_util import plot_approximation2D, plot_acquisition, plot_convergence, plot_approximation3D
+from BO_util import plot_surrogate_approx2D, plot_obj_approx2D, plot_acquisition, plot_convergence, plot_obj_approx3D, plot_surrogate_approx3D
 from acquisition import pre_acquisition
 from Model import GPmodel
 
@@ -136,7 +136,6 @@ class BayesianOptimization:
         print('min_val: ', min_val)
         print('min_x: ', min_x)
 
-        # TODO: add logic for objective function
         # store next sample
         X_next = min_x.reshape(-1, self.dim)
         Y_next = self.f(X_next)
@@ -196,12 +195,23 @@ class BayesianOptimization:
             # if self.stop:
             #     print('BO stopped after {} iterations'.format(i))
             #     break
+            # todo: update to use expected improvement as stopping criterion
         
         # print final results
         print('Final opt_val: ', self.opt_val)
         print('Final opt_x: ', self.X_samples[np.argmin(self.obj_samples)] if self.obj_func is not None else self.X_samples[np.argmin(self.Y_samples)])
     
-    def make_3D_plots(self):
+    
+    def make_plots(self):
+        # call correct function based on dim
+        if self.dim == 1:
+            self._make_plots()
+        elif self.dim == 2:
+            self._make_3D_plots()
+        else:
+            print('Cannot make plots for dim > 2')
+
+    def _make_3D_plots(self):
         # make grid of point between bounds with step 0.01 and format it to 2D array with shape (n_samples, dim)
         X1, X2 = np.meshgrid(*[np.arange(bound[0], bound[1], 0.01) for bound in self.bounds])
         X = np.vstack(map(np.ravel, [X1, X2])).T
@@ -209,49 +219,104 @@ class BayesianOptimization:
         # X = np.vstack([X1.ravel(), X2.ravel()]).T
         # X = np.c_[x_prim.ravel(), y_prim.ravel()]
         # Y = self.f(X,0).reshape(X1.shape)
+
         Y = self.f(X).reshape(X1.shape)
-        
-        plt.figure(figsize=(12, self.n_iter * 3))
+        if self.obj_func is not None:
+            obj = self.obj_func(X, Y.reshape(-1,1)).reshape(X1.shape)
+            plot_ind = 1
+        else:
+            obj = None
+            plot_ind = 0
+
+        n_plots = (len(self.X_samples)-self.n_init)//10
+        fig = plt.figure(figsize=(12, n_plots * 3))
         plt.subplots_adjust(hspace=0.4)
+
         model = GPmodel(kernel=self.kernel, noise=self.noise_std)
-        for i in range(len(self.X_samples)-self.n_init):
-            elem_i = i + self.n_init
+        opts = np.array([])
+        for i in range(n_plots):
+            elem_i = i*10 + self.n_init
             X_samples = self.X_samples[:elem_i, :]
             Y_samples = self.Y_samples[:elem_i, :]
+            if self.obj_func is not None:
+                obj_samples = self.obj_samples[:elem_i, :]
+            else:
+                obj_samples = None
             model.fit(X_samples, Y_samples)
             X_next = self.X_samples[elem_i, :]
-            Y_next = self.Y_samples[elem_i, :]
-            # Plot samples
-            # ax = plt.subplot(self.n_iter, 2, 2 * i + 1, projection='3d')
-            if i%10 == 0:
-                ax = plt.figure().add_subplot(111, projection='3d')
-                plot_approximation3D(model, X, X1, X2, Y, X_samples, Y_samples, ax, X_next, Y_next)
-                plt.title(f"Iteration {i + 1}")
-        
-        plt.show()
 
-    def make_plots(self):
+            opt = self.compute_opt(X_samples, Y_samples, obj_samples)
+            opts = np.append(opts, opt)
+
+            # if (i+1)%10 == 0:
+            if self.obj_func is not None:
+                ax = fig.add_subplot(n_plots, 3, 3*i + 1, projection='3d')
+                plot_obj_approx3D(model, X, X1, X2, Y, X_samples, Y_samples, self.obj_func, ax, X_next=X_next, 
+                                    obj=obj, obj_sample=obj_samples)
+            
+            ax = fig.add_subplot(n_plots, (2+plot_ind), (plot_ind + 2)*i + 1 + plot_ind, projection='3d')
+            plot_surrogate_approx3D(model, X, X1, X2, Y, X_samples, Y_samples, ax, X_next=X_next)
+            ax.set_title('Iteration {}'.format(elem_i+1))
+
+            ax = fig.add_subplot(n_plots, (2+plot_ind), (plot_ind + 2)*i + 2 + plot_ind, projection='3d')
+            plot_acquisition(np.array([X1, X2]), self.acquisition(X, model, opt).reshape(X1.shape), X_next=X_next, 
+                                ax=ax)
+            
+        # plot opt over iterations in new figure
+        plt.figure()
+        plt.plot(np.arange(opts.shape[0]),opts)
+        plt.title('Opt over iterations')
+        plt.xlabel('Iteration')
+        plt.ylabel('Opt')
+
+    def _make_plots(self):
         # Dense grid of points within bounds
         X = np.arange(self.bounds[:, 0], self.bounds[:, 1], 0.01).reshape(-1, 1)
-
-        # Y = self.f(X,0)
         Y = self.f(X).reshape(-1,1)
-        plt.figure(figsize=(12, (len(self.X_samples)-self.n_init) * 3))
+        if self.obj_func is not None:
+            obj = self.obj_func(X, Y).reshape(-1,1)
+            plot_ind = 1
+        else:
+            obj = None
+            plot_ind = 0
+
+        n_plots = len(self.X_samples)-self.n_init
+        plt.figure(figsize=(12, n_plots * 3))
         plt.subplots_adjust(hspace=0.4)
         model = GPmodel(kernel=self.kernel, noise=self.noise_std)
-        for i in range(len(self.X_samples)-self.n_init):
+        opts = np.array([])
+        for i in range(n_plots):
             elem_i = i + self.n_init
             X_samples = self.X_samples[:elem_i, :]
             Y_samples = self.Y_samples[:elem_i, :]
+            if self.obj_func is not None:
+                obj_samples = self.obj_samples[:elem_i, :]
+            else:
+                obj_samples = None
             model.fit(X_samples, Y_samples)
+            # print paramters of model
+            print(f'Iteration {i+1}')
+            print(f'Kernel parameters: {model.gpr.kernel_.get_params()}')
             X_next = self.X_samples[elem_i, :]
-            Y_next = self.Y_samples[elem_i, :]
-            # Plot samples, surrogate function, noise-free objective and next sampling location
-            plt.subplot(self.n_iter, 2, 2 * i + 1)
-            plot_approximation2D(model, X, Y, X_samples, Y_samples, X_next, show_legend=i==0)
+            
+            if self.obj_func is not None:
+                plt.subplot(n_plots, 3, 3 * i + 1)
+                plot_obj_approx2D(model, X, Y, X_samples, Y_samples, X_next=X_next, obj_func=self.obj_func,
+                                    obj=obj, obj_sample=obj_samples, show_legend=i==0)
+
+            plt.subplot(n_plots, 2+plot_ind, (2+plot_ind) * i + 1 + plot_ind)
+            plot_surrogate_approx2D(model, X, Y, X_samples, Y_samples, X_next=X_next, show_legend=i==0)
             plt.title(f'Iteration {i+1}')
 
-            plt.subplot(self.n_iter, 2, 2 * i + 2)
-            opt = self.compute_opt(X_samples, Y_samples)
+            opt = self.compute_opt(X_samples, Y_samples, obj_samples)
+            opts = np.append(opts, opt)
+
+            plt.subplot(n_plots, 2+plot_ind, (2+plot_ind) * i + 2 + plot_ind)
             plot_acquisition(X, self.acquisition(X, model, opt), X_next, show_legend=i==0)
-        plt.show()
+            
+        # plot opt over iterations in new figure
+        plt.figure()
+        plt.plot(opts)
+        plt.title('Opt over iterations')
+        plt.xlabel('Iteration')
+        plt.ylabel('Opt')
