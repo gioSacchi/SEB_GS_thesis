@@ -57,7 +57,7 @@ def visualize_regressor(df_train, model):
         x, y = np.meshgrid(x, y)
         z = model.predict(np.c_[x.ravel(), y.ravel()])
         z = z.reshape(x.shape)
-        ax.plot_surface(x, y, z, alpha=0.2, color="red")
+        ax.plot_surface(x, y, z, alpha=0.5, color="red")
     else:
         print("Cannot visualize data with more than 2 input features")
 
@@ -127,7 +127,7 @@ def visualize_f(f, model, x, des_out, lam, df_train):
         xy_prim = np.c_[x_prim.ravel(), y_prim.ravel()]
         z = f(x, xy_prim, des_out, model.predict(xy_prim).reshape(-1,1), lam)
         ax = fig.add_subplot(111, projection="3d")
-        ax.plot_surface(x_prim, y_prim, z.reshape(x_prim.shape), alpha=0.2, color="red")
+        ax.plot_surface(x_prim, y_prim, z.reshape(x_prim.shape), alpha=0.5, color="red")
     else:
         print("Cannot visualize data with more than 2 input features")
 
@@ -208,7 +208,7 @@ def BO_on_regressor(model, df_train):
     else:
         print("Cannot optimize data with more than 2 input features")
         return
-    bo = BayesianOptimization(f = model, dim = input_data.shape[1],bounds = bounds, n_iter=10, n_init=5, noise_std=0)
+    bo = BayesianOptimization(f = model, dim = input_data.shape[1],bounds = bounds, n_iter=10*input_data.shape[1]**2, n_init=3*input_data.shape[1], noise_std=0)
     bo.run_BO()
     bo.make_plots()
 
@@ -228,8 +228,8 @@ def main():
     # gmb_model_train(df_train)
     # logistic_model_train(df_train)
     # model = linear_model_train(df_train)
-    # model = dct_model_train(df_train)
-    model = svr_model_train(df_train)
+    model = dct_model_train(df_train)
+    # model = svr_model_train(df_train)
 
     # # visualize regressor
     visualize_regressor(df_train, model)
@@ -249,7 +249,7 @@ def main():
     # # init f for BO
     # func = lambda x: model.predict(x)
 
-    # # objective function for BO
+    # objective function for BO
     x = np.array([[14]])
     y_prim = 50
     lam = 5
@@ -259,15 +259,14 @@ def main():
     print("f(x), nuvarande output", func(x))
     BO_on_regressor(func, df_train)
 
-    # For testing own acquisition function
-    # define functions
-    x = np.array([[14]])
-    y_prim = 50
-    lam = 5
-    objective_func = lambda x_prim, func_val: f(x, x_prim, y_prim, func_val, lam)
-    dist_func = lambda x_prim, current_point: np.linalg.norm(x_prim-current_point, axis=1)
-    acq_func = CF_acquisition(dist_func, y_prim, x, lam).get_CF_EI()
-    # test
+    # # For testing own acquisition function
+    # # define functions
+    # x = np.array([[14]])
+    # y_prim = 50
+    # lam = 5
+    # objective_func = lambda x_prim, func_val: f(x, x_prim, y_prim, func_val, lam)
+    # dist_func = lambda x_prim, current_point: np.linalg.norm(x_prim-current_point, axis=1)
+    # acq_func = CF_acquisition(dist_func, y_prim, x, lam).get_CF_EI()
     # bo_test_own(model.predict, objective_func, acq_func, df_train)
 
     plt.show()
