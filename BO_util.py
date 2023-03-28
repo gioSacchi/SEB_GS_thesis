@@ -118,46 +118,8 @@ def plot_surrogate_approx3D(gpr, X, X1, X2, Y, X_sample, Y_sample, ax, X_next=No
     # X_next is a 1D array of the next sample point
 
     mu, std = gpr.predict(X, return_std=True)
-    # std = std.reshape(-1,1)
     mu = mu.reshape(X1.shape)
     std = std.reshape(X1.shape)
-    # if obj_func is not None:
-    #     ax = fig.add_subplot(121, projection='3d').set_title('Objective function (CF) to be optimized')
-
-    #     # plot the objective function
-    #     if obj is None:
-    #         obj = obj_func(X, Y.reshape(-1,1)).reshape(X1.shape)
-    #     ax.plot_surface(X1, X2, obj, alpha=0.5) 
-
-    #     # plot the surrogate function approximation the objective function
-    #     obj_approx = obj_func(X, mu.reshape(-1,1)).reshape(X1.shape)
-    #     obj_approx_upper = obj_func(X, (mu + 1.96 * std).reshape(-1,1)).reshape(X1.shape)
-    #     obj_approx_lower = obj_func(X, (mu - 1.96 * std).reshape(-1,1)).reshape(X1.shape)
-    #     ax.plot_surface(X1, X2, obj_approx, alpha=0.5)
-    #     ax.plot_surface(X1, X2, obj_approx_upper, alpha=0.1)
-    #     ax.plot_surface(X1, X2, obj_approx_lower, alpha=0.1)
-
-    #     # plot the sampled points
-    #     if obj_sample is None:
-    #         obj_sample = obj_func(X_sample, Y_sample).reshape(X_sample.shape)
-    #     ax.plot3D(X_sample[:, 0], X_sample[:, 1], obj_sample.ravel(), 'kx', mew=3, label='Samples')
-    #     if obj_next is not None:
-    #         ax.plot([obj_next[0]], [obj_next[1]], 'kx', mew=3)
-    #     if show_legend:
-    #         ax.legend()
-
-    #     ax = fig.add_subplot(122, projection='3d').set_title('Surrogate function approximating model')
-    #     ax.plot_surface(X1, X2, Y, alpha=0.5) # plot the true model
-    #     ax.plot_surface(X1, X2, mu, alpha=0.5) # plot the surrogate function
-    #     ax.plot_surface(X1, X2, mu + 1.96 * std, alpha=0.1) # plot the confidence interval
-    #     ax.plot_surface(X1, X2, mu - 1.96 * std, alpha=0.1)
-    #     ax.plot3D(X_sample[:, 0], X_sample[:, 1], Y_sample.ravel(), 'kx', mew=3, label='Samples') # plot the sampled points
-    #     if X_next is None:
-    #         ax.plot(X_next[0], X_next[1], 'kx', mew=3)
-    #     if show_legend:
-    #         ax.legend()
-    # else:
-    # ax = fig.add_subplot(111, projection='3d')
     ax.plot_surface(X1, X2, Y, alpha=0.5, label='True model')
     ax.plot_surface(X1, X2, mu, alpha=0.5, label='Surrogate model')
     ax.plot_surface(X1, X2, mu + 1.96 * std, alpha=0.1)
