@@ -22,11 +22,19 @@ class CF_acquisition():
     
     # TODO: where does xi come in?
     # TODO: possible to use some general inverse?
-    def CF_expected_improvement(self, X_prim, model, opt):
+    def CF_expected_improvement(self, X_prim, model, opt, xi=0):
         # Expected improvement acquisition function, xi does NOT mean no exploration
         dist = self.distance_function(X_prim, self.current_point).reshape(-1, 1)
 
-        quat = (opt - dist) / self.lam
+        # for coming calculations only the indecies where dist is smaller than opt are relevant
+        # thos that are not are set to zero
+        ei = np.zeros(dist.shape)
+        idx = np.where(dist < opt)[0]
+
+        if len(idx) == 0:
+            return ei
+
+        quat = (opt - xi - dist[idx]) / self.lam
 
         if self.g_inv is None: # standard Watcher et al. CF formulation
             # ingore warning about invalid value encountered in sqrt
@@ -36,25 +44,18 @@ class CF_acquisition():
         else:
             pass # TODO: implement this using g_inv
             
-        mu, std = model.clip_predict(X_prim) # clip std to avoid numerical error
+        mu, std = model.clip_predict(X_prim[idx]) # clip std to avoid numerical error
         mu = mu.reshape(-1, 1)
         std = std.reshape(-1, 1)
 
-        f1 = opt - dist + self.lam*(2*self.desired_output*mu - mu**2 - std**2 - self.desired_output**2)
+        f1 = opt - xi - dist[idx] + self.lam*(2*self.desired_output*mu - mu**2 - std**2 - self.desired_output**2)
         f2 = self.lam*std*(mu + UB - 2*self.desired_output)
         f3 = self.lam*std*(2*self.desired_output - mu - LB)
 
         arg_UB = (UB - mu) / std
         arg_LB = (LB - mu) / std
 
-        ei = f1*(norm.cdf(arg_UB)-norm.cdf(arg_LB)) + f2*norm.pdf(arg_UB) + f3*norm.pdf(arg_LB)
-
-        # set ei to 0 if dist < opt as this is not a valid point to evaluate
-        if np.any(opt < dist):
-            problem_ind = np.where(opt < dist)[0]
-            ei[problem_ind] = 0
-            # raise ValueError('opt must be greater than dist') # TODO: should I raise error or set to -1?
-            print('opt must be greater than dist')
+        ei[idx] = f1*(norm.cdf(arg_UB)-norm.cdf(arg_LB)) + f2*norm.pdf(arg_UB) + f3*norm.pdf(arg_LB)
 
         if np.any(ei < 0):
             # self.compare_CF_EI(X_prim, model, opt, ei)
