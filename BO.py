@@ -202,24 +202,19 @@ class BayesianOptimization:
         print('Final opt_x: ', self.X_samples[np.argmin(self.obj_samples)] if self.obj_func is not None else self.X_samples[np.argmin(self.Y_samples)])
     
     
-    def make_plots(self):
+    def make_plots(self, save=False, save_path=None):
         # call correct function based on dim
         if self.dim == 1:
-            self._make_plots()
+            self._make_plots(save=save, save_path=save_path)
         elif self.dim == 2:
-            self._make_3D_plots()
+            self._make_3D_plots(save=save, save_path=save_path)
         else:
             print('Cannot make plots for dim > 2')
 
-    def _make_3D_plots(self):
+    def _make_3D_plots(self, save=False, save_path=None):
         # make grid of point between bounds with step 0.01 and format it to 2D array with shape (n_samples, dim)
         X1, X2 = np.meshgrid(*[np.arange(bound[0], bound[1], 0.01) for bound in self.bounds])
-        X = np.vstack(map(np.ravel, [X1, X2])).T
-        # alt code
-        # X = np.vstack([X1.ravel(), X2.ravel()]).T
-        # X = np.c_[x_prim.ravel(), y_prim.ravel()]
-        # Y = self.f(X,0).reshape(X1.shape)
-
+        X = np.c_[X1.ravel(), X2.ravel()]
         Y = self.f(X).reshape(X1.shape)
         if self.obj_func is not None:
             obj = self.obj_func(X, Y.reshape(-1,1)).reshape(X1.shape)
@@ -261,7 +256,14 @@ class BayesianOptimization:
             ax = fig.add_subplot(n_plots, (2+plot_ind), (plot_ind + 2)*i + 2 + plot_ind, projection='3d')
             plot_acquisition(np.array([X1, X2]), self.acquisition(X, model, opt).reshape(X1.shape), X_next=X_next, 
                                 ax=ax)
-            
+        
+        if save:
+            if save_path is None:
+                acq_path = "BO_acq_plots.png"
+            else:
+                acq_path = save_path + "_acq.png"
+            plt.savefig(acq_path)
+
         # plot opt over iterations in new figure
         plt.figure()
         plt.plot(np.arange(opts.shape[0]),opts)
@@ -269,7 +271,14 @@ class BayesianOptimization:
         plt.xlabel('Iteration')
         plt.ylabel('Opt')
 
-    def _make_plots(self):
+        if save:
+            if save_path is None:
+                opt_path = "BO_opt_plots.png"
+            else:
+                opt_path = save_path + "_opt.png"
+            plt.savefig(opt_path)
+
+    def _make_plots(self, save=False, save_path=None):
         # Dense grid of points within bounds
         X = np.arange(self.bounds[:, 0], self.bounds[:, 1], 0.01).reshape(-1, 1)
         Y = self.f(X).reshape(-1,1)
@@ -313,6 +322,13 @@ class BayesianOptimization:
 
             plt.subplot(n_plots, 2+plot_ind, (2+plot_ind) * i + 2 + plot_ind)
             plot_acquisition(X, self.acquisition(X, model, opt), X_next, show_legend=i==0)
+        
+        if save:
+            if save_path is None:
+                acq_path = "BO_acq_plots.png"
+            else:
+                acq_path = save_path + "_acq.png"
+            plt.savefig(acq_path)
             
         # plot opt over iterations in new figure
         plt.figure()
@@ -320,3 +336,10 @@ class BayesianOptimization:
         plt.title('Opt over iterations')
         plt.xlabel('Iteration')
         plt.ylabel('Opt')
+
+        if save:
+            if save_path is None:
+                opt_path = "BO_opt_plots.png"
+            else:
+                opt_path = save_path + "_opt.png"
+            plt.savefig(opt_path)
