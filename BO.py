@@ -10,11 +10,15 @@ from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from sklearn.gaussian_process.kernels import Matern, ConstantKernel
 
 class BayesianOptimization:
-    def __init__(self, f, dim, obj_func = None, acquisition='EI', kernel=None, noise_std=1e-5, bounds=None, n_init=2, n_iter=10, n_opt = 50, random_state=1234, n_stop_iter=5):
+    def __init__(self, f, dim, obj_func = None, acquisition='EI', kernel=None, noise_std=1e-5, bounds=None, 
+                 n_init=2, n_iter=10, n_opt = 50, normalize_Y=True, random_state=1234, n_stop_iter=2,
+                 acq_threshold=0.01):
         # set seed
         np.random.seed(random_state)
+        self.normalize_Y = normalize_Y
+
         self.f = f
-        # if f is not the objective function, obj_func is the objective function
+        # if f is not the function to minimize, obj_func is the function to minimize
         # obj_func should be callable function that takes in X and f(X) (or surrogate of f) as input and returns the objective function value
         self.obj_func = obj_func
 
@@ -39,7 +43,9 @@ class BayesianOptimization:
         self.n_opt = n_opt
 
         self.noisy_evaluations = True if noise_std > 0 else False
-        self.opt_val = None
+        self.opt_val = np.inf
+        self.opt_x = None
+        self.acq_threshold = acq_threshold
 
         # for stopping BO loop
         self.stop = False 
@@ -53,7 +59,8 @@ class BayesianOptimization:
         # initialize GP
         self.kernel = kernel
         self.noise_std = noise_std
-        self.model = GPmodel(kernel=kernel, noise=noise_std)
+        self.model = GPmodel(kernel=kernel, noise=noise_std, normalize_Y=normalize_Y)
+        self.number_of_evaluations_f = self.n_init
 
     def init_samples(self):
         # initialize samples by sampling Xs uniformly from the bounds and computing Ys
@@ -69,6 +76,19 @@ class BayesianOptimization:
             self.obj_samples = self.obj_func(X_samples, Y_samples)
         # compute opt_val
         _ = self.update_opt()
+
+    # def norm_update(self, Y=None):
+    #     # update mean and std of Y
+    #     if Y is None:
+    #         Y = self.Y_samples
+    #     self.mean_Y = np.mean(Y)
+    #     self.std_Y = np.std(Y)
+
+    # def normalize(self, Y):
+    #     return (Y - self.Y_mean) / self.Y_std
+    
+    # def unnormalize(self, Y):
+    #     return Y * self.Y_std + self.Y_mean
 
     def get_acquisition(self, acquisition: str):
         # return callable function for acquisition function
@@ -95,29 +115,46 @@ class BayesianOptimization:
         # if noisy then use mean of GP
         if not self.noisy_evaluations:
             if self.obj_func is not None:
-                opt_val = np.min(obj_samples)
+                opt_val_ind = np.argmin(obj_samples)
+                opt_val = obj_samples[opt_val_ind]
             else:
-                opt_val = np.min(Y_samples)
+                opt_val_ind = np.argmin(Y_samples)
+                opt_val = Y_samples[opt_val_ind]
         else:
             pred_mu = self.model.predict(X_samples)[0]
             if self.obj_func is not None:
-                opt_val = np.min(self.obj_func(X_samples, pred_mu)) # TODO Check this
+                values = self.obj_func(X_samples, pred_mu)
+                opt_val_ind = np.argmin(values)
+                opt_val = values[opt_val_ind]
             else:
-                opt_val = np.min(pred_mu)
+                opt_val_ind = np.argmin(pred_mu)
+                opt_val = pred_mu[opt_val_ind]
         
-        return opt_val
+        opt_x = X_samples[opt_val_ind, :].reshape(-1, self.dim)
+        
+        return opt_val, opt_x
 
     def update_opt(self):
         # update opt_val
-        new_opt = self.compute_opt()
-        if new_opt != self.opt_val:
+        new_opt, new_x = self.compute_opt()
+        if new_opt < self.opt_val:
+            # opt_val init as inf, so this will always be true for first iteration
             self.opt_val = new_opt
+            self.opt_x = new_x.reshape(-1, self.dim)
             return True
+        elif new_opt == self.opt_val and self.opt_x is not None:
+            # if point has same value and is not in opt_x, add it
+            abs_row_diff = np.abs(self.opt_x - new_x)
+            tot_row_diff = np.sum(abs_row_diff, axis=1)
+            if np.abs(tot_row_diff) > 1e-3:
+                self.opt_x = np.vstack((self.opt_x, new_x))
+                return True
+        
         return False
 
     def next_sample(self):
         # init min value and min x for optimization of acquisition function
-        min_val = 1e100
+        min_val = np.inf
         min_x = None
 
         # define objective function for optimization, minus of acquisition function 
@@ -133,12 +170,15 @@ class BayesianOptimization:
                 min_val = res.fun[0]
                 min_x = res.x
         
-        print('min_val: ', min_val)
-        print('min_x: ', min_x)
+        # print('min_val: ', min_val)
+        # print('min_x: ', min_x)
 
         # store next sample
         X_next = min_x.reshape(-1, self.dim)
         Y_next = self.f(X_next)
+        # update number of evaluations
+        self.number_of_evaluations_f += 1
+
         # check dimension of Y_next
         if Y_next.shape == (1,):
             Y_next = Y_next.reshape(-1,1) 
@@ -171,10 +211,26 @@ class BayesianOptimization:
         return X
     
     def stop_BO(self, opt_iter):
-        # if opt_val has not improved for n_stop_iter iterations, stop BO
-        current_iter = self.X_samples.shape[0]-self.n_init
-        if current_iter - opt_iter >= self.n_stop_iter:
-            self.stop = True
+        # # if opt_val has not improved for n_stop_iter iterations, stop BO
+        # current_iter = self.X_samples.shape[0]-self.n_init
+        # if current_iter - opt_iter >= self.n_stop_iter:
+        #     self.stop = True
+
+        # stop if the ratio of acquisition function to optimal value is below threshold
+        # stop is false if ratio is above threshold, number has been below threshold for at most n_stop_iter iterations
+        # and is true if ratio has been below threshold for n_stop_iter iterations, i.e. stop
+        X_next = self.X_samples[-1, :].reshape(-1, self.dim)
+        ratio = self.acquisition(X_next, self.model, self.opt_val)/self.opt_val
+        if ratio < self.acq_threshold:
+            if self.stop is False:
+                self.stop = 1
+            elif 1<=self.stop<self.n_stop_iter-1:
+                self.stop += 1
+            else:
+                self.stop = True
+        else:
+            self.stop = False
+
 
     def run_BO(self):
         opt_iter = 0
@@ -192,14 +248,14 @@ class BayesianOptimization:
                 opt_iter = i
             # check if we should stop BO
             self.stop_BO(opt_iter)
-            # if self.stop:
-            #     print('BO stopped after {} iterations'.format(i))
-            #     break
-            # todo: update to use expected improvement as stopping criterion
+            if self.stop is True:
+                # only stop when self.stop is True, not 1 or 2 etc
+                print('BO stopped after {} iterations'.format(i))
+                break
         
         # print final results
         print('Final opt_val: ', self.opt_val)
-        print('Final opt_x: ', self.X_samples[np.argmin(self.obj_samples)] if self.obj_func is not None else self.X_samples[np.argmin(self.Y_samples)])
+        print('Final opt_x: ', self.opt_x)
     
     
     def make_plots(self, save=False, save_path=None):
@@ -227,7 +283,7 @@ class BayesianOptimization:
         fig = plt.figure(figsize=(12, n_plots * 3))
         plt.subplots_adjust(hspace=0.4)
 
-        model = GPmodel(kernel=self.kernel, noise=self.noise_std)
+        model = GPmodel(kernel=self.kernel, noise=self.noise_std, normalize_Y=self.normalize_Y)
         opts = np.array([])
         for i in range(n_plots):
             elem_i = i*10 + self.n_init
@@ -240,7 +296,7 @@ class BayesianOptimization:
             model.fit(X_samples, Y_samples)
             X_next = self.X_samples[elem_i, :]
 
-            opt = self.compute_opt(X_samples, Y_samples, obj_samples)
+            opt, _ = self.compute_opt(X_samples, Y_samples, obj_samples)
             opts = np.append(opts, opt)
 
             # if (i+1)%10 == 0:
@@ -292,7 +348,7 @@ class BayesianOptimization:
         n_plots = len(self.X_samples)-self.n_init
         plt.figure(figsize=(12, n_plots * 3))
         plt.subplots_adjust(hspace=0.4)
-        model = GPmodel(kernel=self.kernel, noise=self.noise_std)
+        model = GPmodel(kernel=self.kernel, noise=self.noise_std, normalize_Y=self.normalize_Y)
         opts = np.array([])
         for i in range(n_plots):
             elem_i = i + self.n_init
@@ -304,8 +360,8 @@ class BayesianOptimization:
                 obj_samples = None
             model.fit(X_samples, Y_samples)
             # print paramters of model
-            print(f'Iteration {i+1}')
-            print(f'Kernel parameters: {model.gpr.kernel_.get_params()}')
+            # print(f'Iteration {i+1}')
+            # print(f'Kernel parameters: {model.gpr.kernel_.get_params()}')
             X_next = self.X_samples[elem_i, :]
             
             if self.obj_func is not None:
@@ -317,7 +373,7 @@ class BayesianOptimization:
             plot_surrogate_approx2D(model, X, Y, X_samples, Y_samples, X_next=X_next, show_legend=i==0)
             plt.title(f'Iteration {i+1}')
 
-            opt = self.compute_opt(X_samples, Y_samples, obj_samples)
+            opt, _ = self.compute_opt(X_samples, Y_samples, obj_samples)
             opts = np.append(opts, opt)
 
             plt.subplot(n_plots, 2+plot_ind, (2+plot_ind) * i + 2 + plot_ind)
