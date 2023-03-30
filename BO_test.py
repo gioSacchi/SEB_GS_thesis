@@ -1,5 +1,7 @@
 from BO import BayesianOptimization
 import matplotlib.pyplot as plt
+from scipy.optimize import minimize, show_options
+import sys
 
 import numpy as np
 
@@ -13,12 +15,37 @@ def g(X, noise=0):
 def bo_test():
     # bounds = np.array([[-1.0, 2.0], [-2.0, 1.0]])
     bounds = np.array([[-1.0, 2.0]])
-    # bo = BayesianOptimization(g, 2, bounds=bounds, n_iter=42, n_init=25, noise_std=0)
+    # bo = BayesianOptimization(g, 2, bounds=bounds, n_iter=42, n_init=4, noise_std=0)
     bo = BayesianOptimization(f, 1, bounds=bounds, n_iter=10, n_init=2, noise_std=0)
     bo.run_BO()
-    bo.make_plots()
+    bo.make_plots(save=True)
 
     plt.show()
 
+def lbfgs_test():
+    # sys.stdout = open(r"goat.txt", "w")
+    # filename  = open(r"outputfile.txt",'w')
+    # sys.stdout = filename
+    # print ("test sys.stdout")
+    np.random.seed(1235)
+    # bounds = np.array([[-1.0, 2.0], [-2.0, 1.0]])
+    bounds = np.array([[-1.0, 2.0]])
+    # bo = BayesianOptimization(g, 2, bounds=bounds, n_iter=42, n_init=4, noise_std=0)
+    # bo = BayesianOptimization(f, 1, bounds=bounds, n_iter=10, n_init=2, noise_std=0)
+    x0 = np.random.uniform(bounds[:, 0], bounds[:, 1], size=(1, bounds.shape[0]))
+    print(x0, f(x0))
+    
+    # peform the minimization and save the evaluated points of each iteration in a list using callback
+    x_list = []
+    def callback(x):
+        x_list.append(x)
+
+    res = minimize(f, x0, method='L-BFGS-B', bounds=bounds, callback=callback, options={'maxiter': 10, 'disp': True})
+    print(res)
+    print(x_list)
+    # print(show_options('L-BFGS-B'))
+
+
 if __name__ == "__main__":
-    bo_test()
+    # bo_test()
+    lbfgs_test()
