@@ -155,10 +155,9 @@ def BO_on_regressor(model, df_train):
     
     bo = BayesianOptimization(f = model, dim = input_data.shape[1],bounds = bounds, n_iter=10, n_init=5, noise_std=0)
     bo.run_BO()
-    if input_data.shape[1] == 2:
-        bo.make_3D_plots()
-    else:
-        bo.make_plots()
+    print(bo.number_of_evaluations_f)
+    bo.make_plots()
+    
 
 def bo_test_own(func, obj_func, acq, df_train):
     # handle cases of 1 and 2 input features and
@@ -183,8 +182,9 @@ def bo_test_own(func, obj_func, acq, df_train):
         return
     
     bo = BayesianOptimization(f = func, obj_func=obj_func, acquisition=acq, dim = input_data.shape[1], 
-                              bounds = bounds, n_iter=10, n_init=3, noise_std=0)
+                              bounds = bounds, n_iter=10*input_data.shape[1]**2, n_init=2*input_data.shape[1], noise_std=0)
     bo.run_BO()
+    print(bo.number_of_evaluations_f)
     bo.make_plots()
 
 def BO_on_regressor(model, df_train):
@@ -208,7 +208,7 @@ def BO_on_regressor(model, df_train):
     else:
         print("Cannot optimize data with more than 2 input features")
         return
-    bo = BayesianOptimization(f = model, dim = input_data.shape[1],bounds = bounds, n_iter=10*input_data.shape[1]**2, n_init=3*input_data.shape[1], noise_std=0)
+    bo = BayesianOptimization(f = model, dim = input_data.shape[1],bounds = bounds, n_iter=10*input_data.shape[1]**2, n_init=2*input_data.shape[1], noise_std=0)
     bo.run_BO()
     bo.make_plots()
 
@@ -228,8 +228,8 @@ def main():
     # gmb_model_train(df_train)
     # logistic_model_train(df_train)
     # model = linear_model_train(df_train)
-    model = dct_model_train(df_train)
-    # model = svr_model_train(df_train)
+    # model = dct_model_train(df_train)
+    model = svr_model_train(df_train)
 
     # # visualize regressor
     visualize_regressor(df_train, model)
