@@ -38,19 +38,21 @@ def plot_convergence(X_sample, Y_sample, n_init=2):
     plt.ylabel('Best Y')
     plt.title('Value of best selected sample')
 
-def plot_obj_approx2D(gpr, X, Y, X_sample, Y_sample, X_next=None, obj_func=None, obj=None, obj_sample=None, show_legend=False):
-    mu, std = gpr.predict(X, return_std=True)
+def plot_obj_approx2D(model, X, Y, X_sample, Y_sample, X_next=None, obj_func=None, obj=None, obj_sample=None, show_legend=False):
+    mu, std = model.predict(X, return_std=True)
     mu = mu.reshape(-1, 1)
     std = std.reshape(-1, 1)
     # plot the objective function 
     if obj is None:
-        obj = obj_func(X, Y).reshape(X.shape) 
+        obj = obj_func(X, Y)
     plt.plot(X, obj, 'r--', lw=1, label='Obj function')
 
     # plot the surrogate function approximation the objective function
-    obj_approx = obj_func(X, mu).reshape(X.shape)
-    obj_approx_upper = obj_func(X, mu + 1.96 * std).reshape(X.shape)
-    obj_approx_lower = obj_func(X, mu - 1.96 * std).reshape(X.shape)
+    obj_approx = obj_func(X, mu)
+    obj_approx_upper = obj_func(X, mu + 1.96 * std)
+    obj_approx_lower = obj_func(X, mu - 1.96 * std)
+    avg = (obj_approx_lower + obj_approx_upper)/2
+    plt.plot(X, avg, 'g-', lw=1, label='avg obj function')
     plt.plot(X, obj_approx, 'b-', lw=1, label='approx obj function')
     plt.fill_between(X.ravel(), 
                     obj_approx_upper.ravel(), 
@@ -59,15 +61,15 @@ def plot_obj_approx2D(gpr, X, Y, X_sample, Y_sample, X_next=None, obj_func=None,
 
     # plot the sampled points
     if obj_sample is None:
-        obj_sample = obj_func(X_sample, Y_sample).reshape(X_sample.shape)
+        obj_sample = obj_func(X_sample, Y_sample)
     plt.plot(X_sample, obj_sample, 'kx', mew=3, label='Samples')
     if X_next is not None:
         plt.axvline(x=X_next, ls='--', c='k', lw=1)
     if show_legend:
         plt.legend()
 
-def plot_surrogate_approx2D(gpr, X, Y, X_sample, Y_sample, X_next=None, show_legend=False):
-    mu, std = gpr.predict(X, return_std=True)
+def plot_surrogate_approx2D(model, X, Y, X_sample, Y_sample, X_next=None, show_legend=False):
+    mu, std = model.predict(X, return_std=True)
     plt.fill_between(X.ravel(), 
                     mu.ravel() + 1.96 * std, 
                     mu.ravel() - 1.96 * std, 
@@ -80,12 +82,12 @@ def plot_surrogate_approx2D(gpr, X, Y, X_sample, Y_sample, X_next=None, show_leg
     if show_legend:
         plt.legend()
 
-def plot_obj_approx3D(gpr, X, X1, X2, Y, X_sample, Y_sample,  obj_func, ax, X_next=None, obj=None, obj_sample=None, obj_next=None, show_legend=False):
+def plot_obj_approx3D(model, X, X1, X2, Y, X_sample, Y_sample,  obj_func, ax, X_next=None, obj=None, obj_sample=None, obj_next=None, show_legend=False):
     # where X, Y are 2D meshgrid of the domain 
     # X_sample, Y_sample are 2D arrays of the sample points
     # X_next is a 1D array of the next sample point
 
-    mu, std = gpr.predict(X, return_std=True)
+    mu, std = model.predict(X, return_std=True)
     mu = mu.reshape(X1.shape)
     std = std.reshape(X1.shape)
 
@@ -112,12 +114,12 @@ def plot_obj_approx3D(gpr, X, X1, X2, Y, X_sample, Y_sample,  obj_func, ax, X_ne
         ax.legend()
 
 
-def plot_surrogate_approx3D(gpr, X, X1, X2, Y, X_sample, Y_sample, ax, X_next=None, show_legend=False):
+def plot_surrogate_approx3D(model, X, X1, X2, Y, X_sample, Y_sample, ax, X_next=None, show_legend=False):
     # where X, Y are 2D meshgrid of the domain 
     # X_sample, Y_sample are 2D arrays of the sample points
     # X_next is a 1D array of the next sample point
 
-    mu, std = gpr.predict(X, return_std=True)
+    mu, std = model.predict(X, return_std=True)
     mu = mu.reshape(X1.shape)
     std = std.reshape(X1.shape)
     ax.plot_surface(X1, X2, Y, alpha=0.5, label='True model')
