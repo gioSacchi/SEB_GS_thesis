@@ -32,6 +32,8 @@ class GPmodel(GPR):
         if self.normalize_Y:
             self.Y_mean = np.mean(self.Y)
             self.Y_std = np.std(self.Y)
+            if self.Y_std == 0:
+                self.Y_std = 1
             self.Y = (self.Y - self.Y_mean) / self.Y_std
 
         self.gpr.fit(self.X, self.Y)
