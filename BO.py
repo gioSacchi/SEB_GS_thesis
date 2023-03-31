@@ -77,19 +77,6 @@ class BayesianOptimization:
         # compute opt_val
         _ = self.update_opt()
 
-    # def norm_update(self, Y=None):
-    #     # update mean and std of Y
-    #     if Y is None:
-    #         Y = self.Y_samples
-    #     self.mean_Y = np.mean(Y)
-    #     self.std_Y = np.std(Y)
-
-    # def normalize(self, Y):
-    #     return (Y - self.Y_mean) / self.Y_std
-    
-    # def unnormalize(self, Y):
-    #     return Y * self.Y_std + self.Y_mean
-
     def get_acquisition(self, acquisition: str):
         # return callable function for acquisition function
         return pre_acquisition().get_standard_acquisition(acquisition)
@@ -231,7 +218,6 @@ class BayesianOptimization:
         else:
             self.stop = False
 
-
     def run_BO(self):
         opt_iter = 0
         # run BO loop
@@ -257,17 +243,21 @@ class BayesianOptimization:
         print('Final opt_val: ', self.opt_val)
         print('Final opt_x: ', self.opt_x)
     
-    
-    def make_plots(self, save=False, save_path=None):
+    def make_plots(self, y_prim=None, save=False, save_path=None):
         # call correct function based on dim
+
+        # y_prim necessary for objective function plots
+        if self.obj_func is not None and y_prim is None:
+            raise ValueError('y_prim is necessary for objective function plots')
+        
         if self.dim == 1:
-            self._make_plots(save=save, save_path=save_path)
+            self._make_plots(y_prim, save=save, save_path=save_path)
         elif self.dim == 2:
-            self._make_3D_plots(save=save, save_path=save_path)
+            self._make_3D_plots(y_prim, save=save, save_path=save_path)
         else:
             print('Cannot make plots for dim > 2')
 
-    def _make_3D_plots(self, save=False, save_path=None):
+    def _make_3D_plots(self, y_prim, save=False, save_path=None):
         # make grid of point between bounds with step 0.01 and format it to 2D array with shape (n_samples, dim)
         X1, X2 = np.meshgrid(*[np.arange(bound[0], bound[1], 0.01) for bound in self.bounds])
         X = np.c_[X1.ravel(), X2.ravel()]
@@ -280,12 +270,15 @@ class BayesianOptimization:
             plot_ind = 0
 
         n_plots = (len(self.X_samples)-self.n_init)//10
-        fig = plt.figure(figsize=(12, n_plots * 3))
-        plt.subplots_adjust(hspace=0.4)
+        # fig = plt.figure(figsize=(12, n_plots * 3))
+        # plt.subplots_adjust(hspace=0.4)
 
         model = GPmodel(kernel=self.kernel, noise=self.noise_std, normalize_Y=self.normalize_Y)
         opts = np.array([])
         for i in range(n_plots):
+            print('Plotting iteration {}'.format(i))
+            fig = plt.figure(figsize=(12, 24))
+            plt.subplots_adjust(hspace=0.4)
             elem_i = i*10 + self.n_init
             X_samples = self.X_samples[:elem_i, :]
             Y_samples = self.Y_samples[:elem_i, :]
@@ -301,15 +294,18 @@ class BayesianOptimization:
 
             # if (i+1)%10 == 0:
             if self.obj_func is not None:
-                ax = fig.add_subplot(n_plots, 3, 3*i + 1, projection='3d')
-                plot_obj_approx3D(model, X, X1, X2, Y, X_samples, Y_samples, self.obj_func, ax, X_next=X_next, 
+                # ax = fig.add_subplot(n_plots, 3, 3*i + 1, projection='3d')
+                ax = fig.add_subplot(1, 3, 1, projection='3d')
+                plot_obj_approx3D(model, X, X1, X2, Y, X_samples, Y_samples, self.obj_func, ax, y_prim, X_next=X_next, 
                                     obj=obj, obj_sample=obj_samples)
             
-            ax = fig.add_subplot(n_plots, (2+plot_ind), (plot_ind + 2)*i + 1 + plot_ind, projection='3d')
+            # ax = fig.add_subplot(n_plots, (2+plot_ind), (plot_ind + 2)*i + 1 + plot_ind, projection='3d')
+            ax = fig.add_subplot(1, 2 + plot_ind, 1 + plot_ind, projection='3d')
             plot_surrogate_approx3D(model, X, X1, X2, Y, X_samples, Y_samples, ax, X_next=X_next)
             ax.set_title('Iteration {}'.format(elem_i+1))
 
-            ax = fig.add_subplot(n_plots, (2+plot_ind), (plot_ind + 2)*i + 2 + plot_ind, projection='3d')
+            # ax = fig.add_subplot(n_plots, (2+plot_ind), (plot_ind + 2)*i + 2 + plot_ind, projection='3d')
+            ax = fig.add_subplot(1, 2 + plot_ind, 2 + plot_ind, projection='3d')
             plot_acquisition(np.array([X1, X2]), self.acquisition(X, model, opt).reshape(X1.shape), X_next=X_next, 
                                 ax=ax)
         
@@ -334,7 +330,7 @@ class BayesianOptimization:
                 opt_path = save_path + "_opt.png"
             plt.savefig(opt_path)
 
-    def _make_plots(self, save=False, save_path=None):
+    def _make_plots(self, y_prim, save=False, save_path=None):
         # Dense grid of points within bounds
         X = np.arange(self.bounds[:, 0], self.bounds[:, 1], 0.01).reshape(-1, 1)
         Y = self.f(X).reshape(-1,1)
@@ -366,7 +362,7 @@ class BayesianOptimization:
             
             if self.obj_func is not None:
                 plt.subplot(n_plots, 3, 3 * i + 1)
-                plot_obj_approx2D(model, X, Y, X_samples, Y_samples, X_next=X_next, obj_func=self.obj_func,
+                plot_obj_approx2D(model, X, Y, X_samples, Y_samples, X_next=X_next, obj_func=self.obj_func, y_prim=y_prim,
                                     obj=obj, obj_sample=obj_samples, show_legend=i==0)
 
             plt.subplot(n_plots, 2+plot_ind, (2+plot_ind) * i + 1 + plot_ind)
