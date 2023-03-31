@@ -131,35 +131,7 @@ def visualize_f(f, model, x, des_out, lam, df_train):
     else:
         print("Cannot visualize data with more than 2 input features")
 
-def BO_on_regressor(model, df_train):
-    # handle cases of 1 and 2 input features and
-    # define bounds from data and add a margin which is 10% of the range of the data in each dimension
-    # output_data = df_train["Income"]
-    input_data = df_train.drop("Income", axis=1)
-    if input_data.shape[1] == 2:
-        min1 = input_data.iloc[:, 0].min()
-        max1 = input_data.iloc[:, 0].max()
-        min2 = input_data.iloc[:, 1].min()
-        max2 = input_data.iloc[:, 1].max()
-        margin1 = (max1 - min1) * 0.1
-        margin2 = (max2 - min2) * 0.1
-        bounds = np.array([[min1 - margin1, max1 + margin1], [min2 - margin2, max2 + margin2]])
-    elif input_data.shape[1] == 1:
-        min1 = input_data.iloc[:, 0].min()
-        max1 = input_data.iloc[:, 0].max()
-        margin1 = (max1 - min1) * 0.1
-        bounds = np.array([[min1 - margin1, max1 + margin1]])
-    else:
-        print("Cannot optimize data with more than 2 input features")
-        return
-    
-    bo = BayesianOptimization(f = model, dim = input_data.shape[1],bounds = bounds, n_iter=10, n_init=5, noise_std=0)
-    bo.run_BO()
-    print(bo.number_of_evaluations_f)
-    bo.make_plots()
-    
-
-def bo_test_own(func, obj_func, acq, df_train):
+def bo_test_own(func, obj_func, acq, df_train, y_prim):
     # handle cases of 1 and 2 input features and
     # define bounds from data and add a margin which is 10% of the range of the data in each dimension
     # output_data = df_train["Income"]
@@ -182,10 +154,10 @@ def bo_test_own(func, obj_func, acq, df_train):
         return
     
     bo = BayesianOptimization(f = func, obj_func=obj_func, acquisition=acq, dim = input_data.shape[1], 
-                              bounds = bounds, n_iter=10*input_data.shape[1]**2, n_init=2*input_data.shape[1], noise_std=0)
+                              bounds = bounds, n_iter=10*input_data.shape[1]**2, n_init=2*input_data.shape[1], noise_std=0, normalize_Y=True)
     bo.run_BO()
     print(bo.number_of_evaluations_f)
-    bo.make_plots()
+    bo.make_plots(y_prim=y_prim)
 
 def BO_on_regressor(model, df_train):
     # handle cases of 1 and 2 input features and
@@ -210,6 +182,7 @@ def BO_on_regressor(model, df_train):
         return
     bo = BayesianOptimization(f = model, dim = input_data.shape[1],bounds = bounds, n_iter=10*input_data.shape[1]**2, n_init=2*input_data.shape[1], noise_std=0)
     bo.run_BO()
+    print(bo.number_of_evaluations_f)
     bo.make_plots()
 
 def main():
@@ -228,8 +201,8 @@ def main():
     # gmb_model_train(df_train)
     # logistic_model_train(df_train)
     # model = linear_model_train(df_train)
-    # model = dct_model_train(df_train)
-    model = svr_model_train(df_train)
+    model = dct_model_train(df_train)
+    # model = svr_model_train(df_train)
 
     # # visualize regressor
     visualize_regressor(df_train, model)
@@ -249,27 +222,29 @@ def main():
     # # init f for BO
     # func = lambda x: model.predict(x)
 
-    # objective function for BO
-    x = np.array([[14]])
-    y_prim = 50
-    lam = 5
-    func = lambda x_prim: f(x, x_prim, y_prim, model.predict(x_prim), lam)
-    print("x, punkt i fråga", x)
-    print("y_prim, önskad output", y_prim)
-    print("f(x), nuvarande output", func(x))
-    BO_on_regressor(func, df_train)
-
-    # # For testing own acquisition function
-    # # define functions
+    # # objective function for BO
     # x = np.array([[14]])
     # y_prim = 50
     # lam = 5
-    # objective_func = lambda x_prim, func_val: f(x, x_prim, y_prim, func_val, lam)
-    # dist_func = lambda x_prim, current_point: np.linalg.norm(x_prim-current_point, axis=1)
-    # acq_func = CF_acquisition(dist_func, y_prim, x, lam).get_CF_EI()
-    # bo_test_own(model.predict, objective_func, acq_func, df_train)
+    # func = lambda x_prim: f(x, x_prim, y_prim, model.predict(x_prim), lam)
+    # print("x, punkt i fråga", x)
+    # print("y_prim, önskad output", y_prim)
+    # print("f(x), nuvarande output", func(x))
+    # BO_on_regressor(func, df_train)
+
+    # For testing own acquisition function
+    # define functions
+    x = np.array([[14]])
+    y_prim = 50
+    lam = 5
+    objective_func = lambda x_prim, func_val: f(x, x_prim, y_prim, func_val, lam)
+    dist_func = lambda x_prim, current_point: np.linalg.norm(x_prim-current_point, axis=1)
+    acq_func = CF_acquisition(dist_func, y_prim, x, lam).get_CF_EI()
+    bo_test_own(model.predict, objective_func, acq_func, df_train)
 
     plt.show()
+
+    
 
 if __name__ == "__main__":
     main()
