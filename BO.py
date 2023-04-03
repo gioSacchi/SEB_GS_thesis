@@ -12,7 +12,7 @@ from sklearn.gaussian_process.kernels import Matern, ConstantKernel
 class BayesianOptimization:
     def __init__(self, f, dim, obj_func = None, acquisition='EI', kernel=None, noise_std=1e-5, bounds=None, 
                  n_init=2, n_iter=10, n_opt = 50, normalize_Y=True, random_state=1234, n_stop_iter=2,
-                 acq_threshold=0.01):
+                 acq_threshold=0.01, init_points=None, plotting_freq=None):
         # set seed
         np.random.seed(random_state)
         self.normalize_Y = normalize_Y
@@ -38,7 +38,22 @@ class BayesianOptimization:
                 raise ValueError('Bounds dimension does not match the dimension of the data')
 
         self.bounds = bounds
-        self.n_init = n_init
+        if init_points is not None:
+            if init_points.shape[1] != self.dim:
+                raise ValueError('Init_points dimension does not match the dimension of the data')
+            # if init_points is passed, then n_init is set to the number of init_points
+            self.n_init = init_points.shape[0]
+        else:
+            self.n_init = n_init
+
+        if plotting_freq is not None:
+            self.plotting_freq = plotting_freq
+        else:
+            if self.dim == 1:
+                self.plotting_freq = 1
+            elif self.dim == 2:
+                self.plotting_freq = 5
+
         self.n_iter = n_iter
         self.n_opt = n_opt
 
@@ -55,16 +70,19 @@ class BayesianOptimization:
         self.X_samples = None
         self.Y_samples = None
         self.obj_samples = None
-        self.init_samples()
+        self.init_samples(init_points=init_points)
         # initialize GP
         self.kernel = kernel
         self.noise_std = noise_std
         self.model = GPmodel(kernel=kernel, noise=noise_std, normalize_Y=normalize_Y)
         self.number_of_evaluations_f = self.n_init
 
-    def init_samples(self):
+    def init_samples(self, init_points=None):
         # initialize samples by sampling Xs uniformly from the bounds and computing Ys
-        X_samples = np.random.uniform(self.bounds[:, 0], self.bounds[:, 1], size=(self.n_init, self.bounds.shape[0]))
+        if init_points is not None:
+            X_samples = init_points
+        else:
+            X_samples = np.random.uniform(self.bounds[:, 0], self.bounds[:, 1], size=(self.n_init, self.bounds.shape[0]))
         Y_samples = self.f(X_samples)
         # check output dimension, if (n_init,) then reshape to (n_init, 1)
         if Y_samples.shape == (self.n_init,):
@@ -269,7 +287,7 @@ class BayesianOptimization:
             obj = None
             plot_ind = 0
 
-        n_plots = (len(self.X_samples)-self.n_init)//10
+        n_plots = (len(self.X_samples)-self.n_init)//self.plotting_freq
         # fig = plt.figure(figsize=(12, n_plots * 3))
         # plt.subplots_adjust(hspace=0.4)
 
@@ -279,7 +297,7 @@ class BayesianOptimization:
             print('Plotting iteration {}'.format(i))
             fig = plt.figure(figsize=(12, 24))
             plt.subplots_adjust(hspace=0.4)
-            elem_i = i*10 + self.n_init
+            elem_i = i*self.plotting_freq + self.n_init
             X_samples = self.X_samples[:elem_i, :]
             Y_samples = self.Y_samples[:elem_i, :]
             if self.obj_func is not None:
@@ -341,13 +359,13 @@ class BayesianOptimization:
             obj = None
             plot_ind = 0
 
-        n_plots = len(self.X_samples)-self.n_init
+        n_plots = (len(self.X_samples)-self.n_init)//self.plotting_freq
         plt.figure(figsize=(12, n_plots * 3))
         plt.subplots_adjust(hspace=0.4)
         model = GPmodel(kernel=self.kernel, noise=self.noise_std, normalize_Y=self.normalize_Y)
         opts = np.array([])
         for i in range(n_plots):
-            elem_i = i + self.n_init
+            elem_i = i*self.plotting_freq + self.n_init
             X_samples = self.X_samples[:elem_i, :]
             Y_samples = self.Y_samples[:elem_i, :]
             if self.obj_func is not None:
