@@ -2,7 +2,7 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
-from BO_util import plot_sampled_points2D, plot_sampled_points3D
+from src.visualization.BO_util import plot_sampled_points2D, plot_sampled_points3D
 
 class ComparisonOptimizers:
     def __init__(self, opt_func, dim, method="random", bounds=None, noise_std=1e-5, init_points = None, n_init=5, n_iter=50, plotting_freq=None, random_state=1234, n_stop_iter=5):
@@ -167,8 +167,9 @@ class ComparisonOptimizers:
         # make plots
         n_plots = (len(self.X_samples)-self.n_init)//self.plotting_freq
         if self.dim == 1:
-            plt.figure(figsize=(12, n_plots * 3))
-            plt.subplots_adjust(hspace=0.4)
+            fig = plt.figure(figsize=(12, n_plots * 3))
+            fig.subplots_adjust(hspace=0.4)
+            fig.suptitle(f'Optimization using {self.method.lower()}', fontsize=16)
             X = np.arange(self.bounds[:, 0], self.bounds[:, 1], 0.01).reshape(-1, 1)
             Y = self.opt_func(X).reshape(-1, 1)
             opts = np.array([])
@@ -218,9 +219,9 @@ class ComparisonOptimizers:
 
         plt.figure()
         plt.plot(opts)
-        plt.title('Opt over iterations')
-        plt.xlabel('Iteration')
-        plt.ylabel('Opt')
+        plt.title('Change of optimal value over iterations')
+        plt.xlabel('Iterations')
+        plt.ylabel('Optimal value')
 
         if save:
             if save_path is None:

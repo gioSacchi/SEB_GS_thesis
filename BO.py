@@ -1,18 +1,15 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.stats import norm
 from scipy.optimize import minimize
-from BO_util import plot_surrogate_approx2D, plot_obj_approx2D, plot_acquisition, plot_convergence, plot_obj_approx3D, plot_surrogate_approx3D
-from acquisition import pre_acquisition
-from Model import GPmodel
-
-from sklearn.gaussian_process import GaussianProcessRegressor as GPR
-from sklearn.gaussian_process.kernels import Matern, ConstantKernel
+from src.visualization.BO_util import plot_surrogate_approx2D, plot_obj_approx2D, plot_acquisition, plot_convergence, plot_obj_approx3D, plot_surrogate_approx3D
+from src.features.acquisition import pre_acquisition
+from src.features.Model import GPmodel
+import time
 
 class BayesianOptimization:
     def __init__(self, f, dim, obj_func = None, acquisition='EI', kernel=None, noise_std=1e-5, bounds=None, 
                  n_init=2, n_iter=10, n_opt = 50, normalize_Y=True, random_state=1234, n_stop_iter=2,
-                 acq_threshold=0.01, init_points=None, plotting_freq=None):
+                 acq_threshold=0.01, init_points=None, plotting_freq=None, n_restarts=20):
         # set seed
         np.random.seed(random_state)
         self.normalize_Y = normalize_Y
@@ -64,7 +61,10 @@ class BayesianOptimization:
 
         # for stopping BO loop
         self.stop = False 
-        self.n_stop_iter = n_stop_iter
+        if n_stop_iter is None:
+            self.n_stop_iter = np.inf
+        else:
+            self.n_stop_iter = n_stop_iter
 
         # initialize samples
         self.X_samples = None
@@ -74,7 +74,7 @@ class BayesianOptimization:
         # initialize GP
         self.kernel = kernel
         self.noise_std = noise_std
-        self.model = GPmodel(kernel=kernel, noise=noise_std, normalize_Y=normalize_Y)
+        self.model = GPmodel(kernel=kernel, noise=noise_std, normalize_Y=normalize_Y, n_restarts=n_restarts)
         self.number_of_evaluations_f = self.n_init
 
     def init_samples(self, init_points=None):
@@ -158,6 +158,7 @@ class BayesianOptimization:
         return False
 
     def next_sample(self):
+        # avg_acq_time = []
         # init min value and min x for optimization of acquisition function
         min_val = np.inf
         min_x = None
@@ -165,7 +166,11 @@ class BayesianOptimization:
         # define objective function for optimization, minus of acquisition function 
         # since we want to maximize the acquisition function but use minimizer
         def min_obj(x):
-            return -self.acquisition(x.reshape(-1, self.dim), self.model, self.opt_val).flatten()
+            # t1 = time.time()
+            acq = -self.acquisition(x.reshape(-1, self.dim), self.model, self.opt_val).flatten()
+            # t2 = time.time()
+            # avg_acq_time.append(t2-t1)
+            return acq
         
         # optimization loop, initialize x0 randomly n_opt times and do optimization for each x0
         for x0 in np.random.uniform(self.bounds[:, 0], self.bounds[:, 1], size=(self.n_opt, self.bounds.shape[0])):
@@ -177,6 +182,9 @@ class BayesianOptimization:
         
         # print('min_val: ', min_val)
         # print('min_x: ', min_x)
+
+        # print('avg acq time: ', np.sum(avg_acq_time))
+        # print(len(avg_acq_time))
 
         # store next sample
         X_next = min_x.reshape(-1, self.dim)
@@ -243,7 +251,10 @@ class BayesianOptimization:
             # fit GP to samples
             self.model.fit(self.X_samples, self.Y_samples)
             # get next sample
+            # t1 = time.time()
             X_next, Y_next, obj_next = self.next_sample()
+            # t2 = time.time()
+            # print('Time to get next sample: ', t2-t1)
             # update samples
             self.update_samples(X_next, Y_next, obj_next)
             # update opt_val
@@ -337,9 +348,9 @@ class BayesianOptimization:
         # plot opt over iterations in new figure
         plt.figure()
         plt.plot(np.arange(opts.shape[0]),opts)
-        plt.title('Opt over iterations')
-        plt.xlabel('Iteration')
-        plt.ylabel('Opt')
+        plt.title('Change of optimal value over iterations')
+        plt.xlabel('Iterations')
+        plt.ylabel('Optimal value')
 
         if save:
             if save_path is None:
@@ -348,20 +359,26 @@ class BayesianOptimization:
                 opt_path = save_path + "_opt.png"
             plt.savefig(opt_path)
 
-    def _make_plots(self, y_prim, save=False, save_path=None):
+    def _make_plots(self, y_prim, save=False, save_path=None, plot_final=True):
         # Dense grid of points within bounds
         X = np.arange(self.bounds[:, 0], self.bounds[:, 1], 0.01).reshape(-1, 1)
         Y = self.f(X).reshape(-1,1)
+
         if self.obj_func is not None:
             obj = self.obj_func(X, Y).reshape(-1,1)
             plot_ind = 1
         else:
             obj = None
             plot_ind = 0
+        if plot_final:
+            add_rows = 1
+        else:
+            add_rows = 0
 
         n_plots = (len(self.X_samples)-self.n_init)//self.plotting_freq
-        plt.figure(figsize=(12, n_plots * 3))
-        plt.subplots_adjust(hspace=0.4)
+        fig = plt.figure(figsize=(12, n_plots * 3))
+        fig.subplots_adjust(hspace=0.4)
+        fig.suptitle('Bayesian Optimization', fontsize=16)
         model = GPmodel(kernel=self.kernel, noise=self.noise_std, normalize_Y=self.normalize_Y)
         opts = np.array([])
         for i in range(n_plots):
@@ -379,19 +396,45 @@ class BayesianOptimization:
             X_next = self.X_samples[elem_i, :]
             
             if self.obj_func is not None:
-                plt.subplot(n_plots, 3, 3 * i + 1)
+                plt.subplot(n_plots + add_rows, 3, 3 * i + 1)
                 plot_obj_approx2D(model, X, Y, X_samples, Y_samples, X_next=X_next, obj_func=self.obj_func, y_prim=y_prim,
                                     obj=obj, obj_sample=obj_samples, show_legend=i==0)
 
-            plt.subplot(n_plots, 2+plot_ind, (2+plot_ind) * i + 1 + plot_ind)
+            plt.subplot(n_plots + add_rows, 2+plot_ind, (2+plot_ind) * i + 1 + plot_ind)
             plot_surrogate_approx2D(model, X, Y, X_samples, Y_samples, X_next=X_next, show_legend=i==0)
             plt.title(f'Iteration {i+1}')
 
             opt, _ = self.compute_opt(X_samples, Y_samples, obj_samples)
             opts = np.append(opts, opt)
 
-            plt.subplot(n_plots, 2+plot_ind, (2+plot_ind) * i + 2 + plot_ind)
+            plt.subplot(n_plots + add_rows, 2+plot_ind, (2+plot_ind) * i + 2 + plot_ind)
             plot_acquisition(X, self.acquisition(X, model, opt), X_next, show_legend=i==0)
+        
+        if plot_final:
+            # plot final model using all samples
+            X_samples = self.X_samples
+            Y_samples = self.Y_samples
+            if self.obj_func is not None:
+                obj_samples = self.obj_samples
+            else:
+                obj_samples = None
+            model.fit(X_samples, Y_samples)
+            # print paramters of model
+            # print(f'Iteration {i+1}')
+            # print(f'Kernel parameters: {model.gpr.kernel_.get_params()}')
+            
+            if self.obj_func is not None:
+                plt.subplot(n_plots + add_rows, 3, 3 * n_plots + 1)
+                plot_obj_approx2D(model, X, Y, X_samples, Y_samples, obj_func=self.obj_func, y_prim=y_prim,
+                                    obj=obj, obj_sample=obj_samples, show_legend=False)
+
+            plt.subplot(n_plots + add_rows, 2+plot_ind, (2+plot_ind) * n_plots + 1 + plot_ind)
+            plot_surrogate_approx2D(model, X, Y, X_samples, Y_samples, show_legend=False)
+            plt.title(f'Final')
+
+            opt, _ = self.compute_opt(X_samples, Y_samples, obj_samples)
+            opts = np.append(opts, opt)
+
         
         if save:
             if save_path is None:
@@ -403,9 +446,9 @@ class BayesianOptimization:
         # plot opt over iterations in new figure
         plt.figure()
         plt.plot(opts)
-        plt.title('Opt over iterations')
-        plt.xlabel('Iteration')
-        plt.ylabel('Opt')
+        plt.title('Change of optimal value over iterations')
+        plt.xlabel('Iterations')
+        plt.ylabel('Optimal value')
 
         if save:
             if save_path is None:

@@ -12,10 +12,10 @@ def g(X, noise=0):
 
 
 def comp():
-    bounds = np.array([[-1.0, 2.0], [-2.0, 1.0]])
-    # bounds = np.array([[-1.0, 2.0]])
-    # alt = ComparisonOptimizers(f, 1, method="l-bfgs-b", bounds=bounds, n_iter=10, n_init=2, noise_std=0, n_stop_iter=4)
-    alt = ComparisonOptimizers(g, 2, method="l-bfgs-b", bounds=bounds, n_iter=60, n_init=6, noise_std=0, n_stop_iter=4)
+    # bounds = np.array([[-1.0, 2.0], [-2.0, 1.0]])
+    bounds = np.array([[-1.0, 2.0]])
+    alt = ComparisonOptimizers(f, 1, method="random", bounds=bounds, n_iter=10, n_init=2, noise_std=0, n_stop_iter=4)
+    # alt = ComparisonOptimizers(g, 2, method="l-bfgs-b", bounds=bounds, n_iter=60, n_init=6, noise_std=0, n_stop_iter=4)
     alt.run()
     alt.make_plots()
 

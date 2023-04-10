@@ -45,7 +45,7 @@ def plot_obj_approx2D(model, X, Y, X_sample, Y_sample, obj_func, y_prim, X_next=
     # plot the objective function 
     if obj is None:
         obj = obj_func(X, Y)
-    plt.plot(X, obj, 'r--', lw=1, label='Obj function')
+    plt.plot(X, obj, 'r--', lw=1, label='Objective function')
 
     # compute the upper and lower bound of the surrogate function
     model_upper = mu + 1.96 * std
@@ -61,7 +61,7 @@ def plot_obj_approx2D(model, X, Y, X_sample, Y_sample, obj_func, y_prim, X_next=
     
     # plot the surrogate function approximation the objective function
     obj_approx = obj_func(X, mu)
-    plt.plot(X, obj_approx, 'b-', lw=1, label='approx obj function')
+    plt.plot(X, obj_approx, 'b-', lw=1, label='Approximate objective function')
 
     # plot the upper and lower bound of the objective function
     plt.fill_between(X.ravel(), 
@@ -84,8 +84,8 @@ def plot_surrogate_approx2D(model, X, Y, X_sample, Y_sample, X_next=None, show_l
                     mu.ravel() + 1.96 * std, 
                     mu.ravel() - 1.96 * std, 
                     alpha=0.2) 
-    plt.plot(X, Y, 'y--', lw=1, label='True model')
-    plt.plot(X, mu, 'b-', lw=1, label='Surrogate function')
+    plt.plot(X, Y, 'y--', lw=1, label='Real model')
+    plt.plot(X, mu, 'b-', lw=1, label='Surrogate model')
     plt.plot(X_sample, Y_sample, 'kx', mew=3, label='Samples')
     if X_next:
         plt.axvline(x=X_next, ls='--', c='k', lw=1)
@@ -104,7 +104,7 @@ def plot_obj_approx3D(model, X, X1, X2, Y, X_sample, Y_sample,  obj_func, ax, y_
     # plot the objective function
     if obj is None:
         obj = obj_func(X, Y.reshape(-1,1)).reshape(X1.shape)
-    ax.plot_surface(X1, X2, obj, alpha=0.5, label='Obj function') 
+    ax.plot_surface(X1, X2, obj, alpha=0.5, label='Real objective function') 
 
     # compute the upper and lower bound of the surrogate function
     model_upper = (mu + 1.96 * std).reshape(-1,1)
@@ -120,7 +120,7 @@ def plot_obj_approx3D(model, X, X1, X2, Y, X_sample, Y_sample,  obj_func, ax, y_
     
     # plot the surrogate function approximation the objective function
     obj_approx = obj_func(X, mu.reshape(-1,1)).reshape(X1.shape)
-    ax.plot_surface(X1, X2, obj_approx, alpha=0.5, label='approx obj function')
+    ax.plot_surface(X1, X2, obj_approx, alpha=0.5, label='Approximated objective function')
     # plot the upper and lower bound of the objective function
     ax.plot_surface(X1, X2, plot_upper, alpha=0.2)
     ax.plot_surface(X1, X2, plot_lower, alpha=0.2)
@@ -143,7 +143,7 @@ def plot_surrogate_approx3D(model, X, X1, X2, Y, X_sample, Y_sample, ax, X_next=
     mu, std = model.predict(X, return_std=True)
     mu = mu.reshape(X1.shape)
     std = std.reshape(X1.shape)
-    ax.plot_surface(X1, X2, Y, alpha=0.5, label='True model')
+    ax.plot_surface(X1, X2, Y, alpha=0.5, label='Real model')
     ax.plot_surface(X1, X2, mu, alpha=0.5, label='Surrogate model')
     ax.plot_surface(X1, X2, mu + 1.96 * std, alpha=0.2)
     ax.plot_surface(X1, X2, mu - 1.96 * std, alpha=0.2)
@@ -154,7 +154,7 @@ def plot_surrogate_approx3D(model, X, X1, X2, Y, X_sample, Y_sample, ax, X_next=
         ax.legend()
 
 def plot_sampled_points2D(X, Y, X_sample, Y_sample, X_next=None, show_legend=False):
-    plt.plot(X, Y, 'y--', lw=1, label='True model')
+    plt.plot(X, Y, 'y--', lw=1, label='Real model')
     plt.plot(X_sample, Y_sample, 'kx', mew=3, label='Samples')
     if X_next:
         plt.axvline(x=X_next, ls='--', c='k', lw=1)
@@ -162,7 +162,7 @@ def plot_sampled_points2D(X, Y, X_sample, Y_sample, X_next=None, show_legend=Fal
         plt.legend()
 
 def plot_sampled_points3D(X1, X2, Y, X_sample, Y_sample, ax, X_next=None, show_legend=False):
-    ax.plot_surface(X1, X2, Y, alpha=0.5, label='True model')
+    ax.plot_surface(X1, X2, Y, alpha=0.5, label='Real model')
     ax.plot3D(X_sample[:, 0], X_sample[:, 1], Y_sample.ravel(), 'x', mew=3, label='Samples')
     if X_next is not None:
         ax.plot(X_next[0], X_next[1], 'x', mew=3)

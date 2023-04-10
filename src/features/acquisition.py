@@ -45,7 +45,7 @@ class pre_acquisition():
 
     #     return ei
 
-    def expected_improvement(self, x, model, opt, xi=0.01):
+    def expected_improvement(self, x, model, opt, xi=10):
         # GpyOpt version but with quantiles inside instead of import, they have a clip in predict
 
         def get_quantiles(acquisition_par, fmin, m, s):
