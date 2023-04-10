@@ -9,7 +9,8 @@ from sklearn.tree import DecisionTreeRegressor
 from sklearn.svm import SVR
 
 from BO import BayesianOptimization
-from CF_acq import CF_acquisition
+from src.features.CF_acq import CF_acquisition
+from ALT_opt import ComparisonOptimizers
 
 def visualize(df_train):
     """Visualize data"""
@@ -180,14 +181,58 @@ def BO_on_regressor(model, df_train):
     else:
         print("Cannot optimize data with more than 2 input features")
         return
-    bo = BayesianOptimization(f = model, dim = input_data.shape[1],bounds = bounds, n_iter=10*input_data.shape[1]**2, n_init=2*input_data.shape[1], noise_std=0)
+    bo = BayesianOptimization(f = model, dim = input_data.shape[1],bounds = bounds, n_iter=10*input_data.shape[1]**2, n_init=2*input_data.shape[1], noise_std=0, normalize_Y=True)
     bo.run_BO()
     print(bo.number_of_evaluations_f)
     bo.make_plots()
 
+def comparison(model, df_train, opt_func = None, objective_function=None, acq_func=None, y_prim=None):
+    # handle cases of 1 and 2 input features and
+    # define bounds from data and add a margin which is 10% of the range of the data in each dimension
+    # output_data = df_train["Income"]
+    input_data = df_train.drop("Income", axis=1)
+    if input_data.shape[1] == 2:
+        min1 = input_data.iloc[:, 0].min()
+        max1 = input_data.iloc[:, 0].max()
+        min2 = input_data.iloc[:, 1].min()
+        max2 = input_data.iloc[:, 1].max()
+        margin1 = (max1 - min1) * 0.1
+        margin2 = (max2 - min2) * 0.1
+        bounds = np.array([[min1 - margin1, max1 + margin1], [min2 - margin2, max2 + margin2]])
+    elif input_data.shape[1] == 1:
+        min1 = input_data.iloc[:, 0].min()
+        max1 = input_data.iloc[:, 0].max()
+        margin1 = (max1 - min1) * 0.1
+        bounds = np.array([[min1 - margin1, max1 + margin1]])
+    else:
+        print("Cannot optimize data with more than 2 input features")
+        return
+    if objective_function is None:
+        bo = BayesianOptimization(f = model, dim = input_data.shape[1], bounds = bounds, n_iter=10*input_data.shape[1]**2, n_init=2*input_data.shape[1], noise_std=0, normalize_Y=True)
+    else:
+        bo = BayesianOptimization(f = model, obj_func=objective_function, acquisition=acq_func, dim = input_data.shape[1], bounds = bounds, n_iter=10*input_data.shape[1]**2, n_init=2*input_data.shape[1], noise_std=0, normalize_Y=True)
+    bo.run_BO()
+    print(bo.number_of_evaluations_f)
+    if y_prim is None:
+        bo.make_plots()
+    else:
+        bo.make_plots(y_prim=y_prim)
+    if opt_func is None:
+        alt_random = ComparisonOptimizers(model, input_data.shape[1], bounds=bounds, method = 'random', n_iter=10*input_data.shape[1]**2, n_init=2*input_data.shape[1], noise_std=0)
+    else:
+        alt_random = ComparisonOptimizers(opt_func, input_data.shape[1], bounds=bounds, method = 'random',n_iter=10*input_data.shape[1]**2, n_init=2*input_data.shape[1], noise_std=0)    
+    alt_random.run()
+    alt_random.make_plots()
+    if opt_func is None:
+        alt_quasi = ComparisonOptimizers(model, input_data.shape[1], bounds=bounds,  method='l-bfgs-b', n_iter=10*input_data.shape[1]**2, n_init=2*input_data.shape[1], noise_std=0)
+    else:
+        alt_quasi = ComparisonOptimizers(opt_func, input_data.shape[1], bounds=bounds,  method='l-bfgs-b', n_iter=10*input_data.shape[1]**2, n_init=2*input_data.shape[1], noise_std=0)
+    alt_quasi.run()
+    alt_quasi.make_plots()
+
 def main():
     """Main function"""
-    data_path = "Income1.csv"
+    data_path = "src\data\Income1.csv"
     # read data
     df_train = pd.read_csv(data_path)
     df_train = df_train.rename(columns = lambda x:re.sub('[^A-Za-z0-9_]+', '', x))
@@ -204,7 +249,7 @@ def main():
     model = dct_model_train(df_train)
     # model = svr_model_train(df_train)
 
-    # # visualize regressor
+    # visualize regressor
     visualize_regressor(df_train, model)
 
     # # Try BO on regressor
@@ -213,7 +258,7 @@ def main():
     # for seeing objective function
     x = np.array([[14]])
     y_prim = 50
-    lam = 5
+    lam = 0.1
     print("x, punkt i fråga", x)
     print("y_prim, önskad output", y_prim)
     print("model.predict(x), nuvarande output", model.predict(x))
@@ -222,29 +267,39 @@ def main():
     # # init f for BO
     # func = lambda x: model.predict(x)
 
-    # # objective function for BO
-    # x = np.array([[14]])
-    # y_prim = 50
-    # lam = 5
-    # func = lambda x_prim: f(x, x_prim, y_prim, model.predict(x_prim), lam)
-    # print("x, punkt i fråga", x)
-    # print("y_prim, önskad output", y_prim)
-    # print("f(x), nuvarande output", func(x))
-    # BO_on_regressor(func, df_train)
-
-    # For testing own acquisition function
-    # define functions
+    # objective function for BO
     x = np.array([[14]])
     y_prim = 50
     lam = 5
-    objective_func = lambda x_prim, func_val: f(x, x_prim, y_prim, func_val, lam)
-    dist_func = lambda x_prim, current_point: np.linalg.norm(x_prim-current_point, axis=1)
-    acq_func = CF_acquisition(dist_func, y_prim, x, lam).get_CF_EI()
-    bo_test_own(model.predict, objective_func, acq_func, df_train)
+    func = lambda x_prim: f(x, x_prim, y_prim, model.predict(x_prim), lam)
+    print("x, punkt i fråga", x)
+    print("y_prim, önskad output", y_prim)
+    print("f(x), nuvarande output", func(x))
+    BO_on_regressor(func, df_train)
+
+    # # For testing own acquisition function
+    # # define functions
+    # x = np.array([[14]])
+    # y_prim = 50
+    # lam = 5
+    # objective_func = lambda x_prim, func_val: f(x, x_prim, y_prim, func_val, lam)
+    # dist_func = lambda x_prim, current_point: np.linalg.norm(x_prim-current_point, axis=1)
+    # acq_func = CF_acquisition(dist_func, y_prim, x, lam).get_CF_EI()
+    # bo_test_own(model.predict, objective_func, acq_func, df_train, y_prim=y_prim)
+
+    # # compare with other optimizers
+    # x = np.array([[14]])
+    # y_prim = 50
+    # lam = 5
+    # objective_func = lambda x_prim, func_val: f(x, x_prim, y_prim, func_val, lam)
+    # opt_func = lambda x_prim: objective_func(x_prim, model.predict(x_prim))
+    # dist_func = lambda x_prim, current_point: np.linalg.norm(x_prim-current_point, axis=1)
+    # acq_func = CF_acquisition(dist_func, y_prim, x, lam).get_CF_EI()
+    # comparison(model.predict, df_train, opt_func, objective_func, acq_func, y_prim)
 
     plt.show()
 
-    
+
 
 if __name__ == "__main__":
     main()
