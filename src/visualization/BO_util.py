@@ -38,7 +38,7 @@ def plot_convergence(X_sample, Y_sample, n_init=2):
     plt.ylabel('Best Y')
     plt.title('Value of best selected sample')
 
-def plot_obj_approx2D(model, X, Y, X_sample, Y_sample, obj_func, y_prim, X_next=None, obj=None, obj_sample=None, show_legend=False):
+def plot_obj_approx2D(model, X, Y, X_sample, Y_sample, obj_func, y_prim, X_next=None, obj=None, obj_sample=None, opt=None, show_legend=False):
     mu, std = model.predict(X, return_std=True)
     mu = mu.reshape(-1, 1)
     std = std.reshape(-1, 1)
@@ -73,12 +73,17 @@ def plot_obj_approx2D(model, X, Y, X_sample, Y_sample, obj_func, y_prim, X_next=
     if obj_sample is None:
         obj_sample = obj_func(X_sample, Y_sample)
     plt.plot(X_sample, obj_sample, 'kx', mew=3, label='Samples')
+
+    # plot the optimal point
+    if opt is not None:
+        # then opt should be a tuple (opt_x, opt_obj)
+        plt.plot(opt[0], opt[1], 'gx', mew=3, label='Optimal point')
     if X_next is not None:
         plt.axvline(x=X_next, ls='--', c='k', lw=1)
     if show_legend:
         plt.legend()
 
-def plot_surrogate_approx2D(model, X, Y, X_sample, Y_sample, X_next=None, show_legend=False):
+def plot_surrogate_approx2D(model, X, Y, X_sample, Y_sample, X_next=None, opt=None, show_legend=False):
     mu, std = model.predict(X, return_std=True)
     plt.fill_between(X.ravel(), 
                     mu.ravel() + 1.96 * std, 
@@ -89,10 +94,13 @@ def plot_surrogate_approx2D(model, X, Y, X_sample, Y_sample, X_next=None, show_l
     plt.plot(X_sample, Y_sample, 'kx', mew=3, label='Samples')
     if X_next:
         plt.axvline(x=X_next, ls='--', c='k', lw=1)
+    if opt is not None:
+        # then opt should be a tuple (opt_x, opt_y)
+        plt.plot(opt[0], opt[1], 'gx', mew=3, label='Optimal point')
     if show_legend:
         plt.legend()
 
-def plot_obj_approx3D(model, X, X1, X2, Y, X_sample, Y_sample,  obj_func, ax, y_prim, X_next=None, obj=None, obj_sample=None, obj_next=None, show_legend=False):
+def plot_obj_approx3D(model, X, X1, X2, Y, X_sample, Y_sample,  obj_func, ax, y_prim, X_next=None, obj=None, obj_sample=None, obj_next=None, opt=None, show_legend=False):
     # where X, Y are 2D meshgrid of the domain 
     # X_sample, Y_sample are 2D arrays of the sample points
     # X_next is a 1D array of the next sample point
@@ -129,13 +137,17 @@ def plot_obj_approx3D(model, X, X1, X2, Y, X_sample, Y_sample,  obj_func, ax, y_
     if obj_sample is None:
         obj_sample = obj_func(X_sample, Y_sample).reshape(X_sample.shape)
     ax.scatter(X_sample[:, 0], X_sample[:, 1], obj_sample, marker='x', s=100, label='Samples')
+    # plot the optimal point
+    if opt is not None:
+        # then opt should be a tuple (opt_x, opt_obj)
+        ax.scatter(opt[0][0], opt[0][1], opt[1], marker='x', s=100, label='Optimal point')
     if X_next is not None:
         ax.scatter(X_next[0], X_next[1], obj_next, marker='x', s=100, label='Next sampling location')
     if show_legend:
         ax.legend()
 
 
-def plot_surrogate_approx3D(model, X, X1, X2, Y, X_sample, Y_sample, ax, X_next=None, show_legend=False):
+def plot_surrogate_approx3D(model, X, X1, X2, Y, X_sample, Y_sample, ax, X_next=None, opt=None, show_legend=False):
     # where X, Y are 2D meshgrid of the domain 
     # X_sample, Y_sample are 2D arrays of the sample points
     # X_next is a 1D array of the next sample point
@@ -149,7 +161,10 @@ def plot_surrogate_approx3D(model, X, X1, X2, Y, X_sample, Y_sample, ax, X_next=
     ax.plot_surface(X1, X2, mu - 1.96 * std, alpha=0.2)
     ax.plot3D(X_sample[:, 0], X_sample[:, 1], Y_sample.ravel(), 'x', mew=3, label='Samples')
     if X_next is not None:
-        ax.plot(X_next[0], X_next[1], 'x', mew=3)
+        ax.scatter(X_next[0], X_next[1], model.predict(X_next), marker='x', s=100, label='Next sampling location')
+    if opt is not None:
+        # then opt should be a tuple (opt_x, opt_y)
+        ax.scatter(opt[0][0], opt[0][1], opt[1], marker='x', s=100, label='Optimal point')
     if show_legend:
         ax.legend()
 
