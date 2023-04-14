@@ -318,24 +318,26 @@ class BayesianOptimization:
             model.fit(X_samples, Y_samples)
             X_next = self.X_samples[elem_i, :]
 
-            opt, _ = self.compute_opt(X_samples, Y_samples, obj_samples)
-            opts = np.append(opts, opt)
+            opt_val, opt_x = self.compute_opt(X_samples, Y_samples, obj_samples)
+            opts = np.append(opts, opt_val)
+            opt_tup = (opt_x, opt_val) # tuple of opt_x and opt_val for plotting
 
             # if (i+1)%10 == 0:
             if self.obj_func is not None:
                 # ax = fig.add_subplot(n_plots, 3, 3*i + 1, projection='3d')
                 ax = fig.add_subplot(1, 3, 1, projection='3d')
                 plot_obj_approx3D(model, X, X1, X2, Y, X_samples, Y_samples, self.obj_func, ax, y_prim, X_next=X_next, 
-                                    obj=obj, obj_sample=obj_samples)
+                                    obj=obj, obj_sample=obj_samples, opt=opt_tup)
+                opt_tup = None # So that opt is not plotted twice
             
             # ax = fig.add_subplot(n_plots, (2+plot_ind), (plot_ind + 2)*i + 1 + plot_ind, projection='3d')
             ax = fig.add_subplot(1, 2 + plot_ind, 1 + plot_ind, projection='3d')
-            plot_surrogate_approx3D(model, X, X1, X2, Y, X_samples, Y_samples, ax, X_next=X_next)
+            plot_surrogate_approx3D(model, X, X1, X2, Y, X_samples, Y_samples, ax, X_next=X_next, opt=opt_tup)
             ax.set_title('Iteration {}'.format(elem_i+1))
 
             # ax = fig.add_subplot(n_plots, (2+plot_ind), (plot_ind + 2)*i + 2 + plot_ind, projection='3d')
             ax = fig.add_subplot(1, 2 + plot_ind, 2 + plot_ind, projection='3d')
-            plot_acquisition(np.array([X1, X2]), self.acquisition(X, model, opt).reshape(X1.shape), X_next=X_next, 
+            plot_acquisition(np.array([X1, X2]), self.acquisition(X, model, opt_val).reshape(X1.shape), X_next=X_next, 
                                 ax=ax)
         
         if save:
@@ -395,20 +397,22 @@ class BayesianOptimization:
             # print(f'Kernel parameters: {model.gpr.kernel_.get_params()}')
             X_next = self.X_samples[elem_i, :]
             
+            opt_val, opt_x = self.compute_opt(X_samples, Y_samples, obj_samples)
+            opts = np.append(opts, opt_val)
+            opt_tup = (opt_x, opt_val) # tuple of opt_x and opt_val for plotting
+
             if self.obj_func is not None:
                 plt.subplot(n_plots + add_rows, 3, 3 * i + 1)
                 plot_obj_approx2D(model, X, Y, X_samples, Y_samples, X_next=X_next, obj_func=self.obj_func, y_prim=y_prim,
-                                    obj=obj, obj_sample=obj_samples, show_legend=i==0)
+                                    obj=obj, obj_sample=obj_samples, opt=opt_tup, show_legend=i==0)
+                opt_tup = None # So that opt is not plotted twice
 
             plt.subplot(n_plots + add_rows, 2+plot_ind, (2+plot_ind) * i + 1 + plot_ind)
-            plot_surrogate_approx2D(model, X, Y, X_samples, Y_samples, X_next=X_next, show_legend=i==0)
+            plot_surrogate_approx2D(model, X, Y, X_samples, Y_samples, X_next=X_next, opt=opt_tup, show_legend=i==0)
             plt.title(f'Iteration {i+1}')
 
-            opt, _ = self.compute_opt(X_samples, Y_samples, obj_samples)
-            opts = np.append(opts, opt)
-
             plt.subplot(n_plots + add_rows, 2+plot_ind, (2+plot_ind) * i + 2 + plot_ind)
-            plot_acquisition(X, self.acquisition(X, model, opt), X_next, show_legend=i==0)
+            plot_acquisition(X, self.acquisition(X, model, opt_val), X_next, show_legend=i==0)
         
         if plot_final:
             # plot final model using all samples
@@ -423,18 +427,19 @@ class BayesianOptimization:
             # print(f'Iteration {i+1}')
             # print(f'Kernel parameters: {model.gpr.kernel_.get_params()}')
             
+            opt_val, opt_x = self.compute_opt(X_samples, Y_samples, obj_samples)
+            opts = np.append(opts, opt_val)
+            opt_tup = (opt_x, opt_val) # tuple of opt_x and opt_val for plotting
+
             if self.obj_func is not None:
                 plt.subplot(n_plots + add_rows, 3, 3 * n_plots + 1)
                 plot_obj_approx2D(model, X, Y, X_samples, Y_samples, obj_func=self.obj_func, y_prim=y_prim,
-                                    obj=obj, obj_sample=obj_samples, show_legend=False)
+                                    obj=obj, obj_sample=obj_samples, opt=opt_tup, show_legend=False)
+                opt_tup = None # So that opt is not plotted twice
 
             plt.subplot(n_plots + add_rows, 2+plot_ind, (2+plot_ind) * n_plots + 1 + plot_ind)
-            plot_surrogate_approx2D(model, X, Y, X_samples, Y_samples, show_legend=False)
+            plot_surrogate_approx2D(model, X, Y, X_samples, Y_samples, opt=opt_tup, show_legend=False)
             plt.title(f'Final')
-
-            opt, _ = self.compute_opt(X_samples, Y_samples, obj_samples)
-            opts = np.append(opts, opt)
-
         
         if save:
             if save_path is None:
