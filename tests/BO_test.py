@@ -1,7 +1,8 @@
-from BO import BayesianOptimization
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize, show_options
 import sys
+sys.path.append(r"C:\\Users\\pingu\SEB_GS_thesis\\")
+from BO import BayesianOptimization
 
 import numpy as np
 
