@@ -45,6 +45,7 @@ def visualize_regressor(df_train, model):
         x = np.linspace(x_min, x_max, 100)
         y = model.predict(x.reshape(-1, 1))
         plt.plot(x, y, color="red")
+        plt.axhline(y=60, color='black', linestyle='dotted')
     elif input_data.shape[1] == 2:
         ax = fig.add_subplot(111, projection="3d")
         ax.scatter(input_data.iloc[:, 0], input_data.iloc[:, 1], output_data)
@@ -58,54 +59,65 @@ def visualize_regressor(df_train, model):
         x, y = np.meshgrid(x, y)
         z = model.predict(np.c_[x.ravel(), y.ravel()])
         z = z.reshape(x.shape)
-        ax.plot_surface(x, y, z, alpha=0.5, color="red")
+        ax.plot_surface(x, y, z, antialiased=False, cmap="plasma")
     else:
         print("Cannot visualize data with more than 2 input features")
 
 def linear_model_train(df_train):
-    X_train, X_test, y_train, y_test = train_test_split(df_train.drop("Income",axis=1), df_train["Income"], test_size=0.2, random_state=2)
+    # X_train, X_test, y_train, y_test = train_test_split(df_train.drop("Income",axis=1), df_train["Income"], test_size=0.2, random_state=2)
     model = LinearRegression()
-    model.fit(X_train.to_numpy(), y_train.to_numpy())
-    y_pred = model.predict(X_test.to_numpy())
+    model.fit(df_train.drop("Income",axis=1).to_numpy(), df_train["Income"].to_numpy())
+    # model.fit(X_train.to_numpy(), y_train.to_numpy())
+    # y_pred = model.predict(X_test.to_numpy())
     
-    # evaluate the model
-    print('R2: %.3f' % r2_score(y_test, y_pred))
-    print("pred", y_pred.round(3))
-    print("true", y_test.values.round(3))
+    # # evaluate the model
+    # print('R2: %.3f' % r2_score(y_test, y_pred))
+    # print("pred", y_pred.round(3))
+    # print("true", y_test.values.round(3))
 
     return model
 
 def dct_model_train(df_train):
-    X_train, X_test, y_train, y_test = train_test_split(df_train.drop("Income",axis=1), df_train["Income"], test_size=0.2, random_state=2)
+    # X_train, X_test, y_train, y_test = train_test_split(df_train.drop("Income",axis=1), df_train["Income"], test_size=0.2, random_state=2)
     model = DecisionTreeRegressor()
-    model.fit(X_train.to_numpy(), y_train.to_numpy())
-    y_pred = model.predict(X_test.to_numpy())
+    model.fit(df_train.drop("Income",axis=1).to_numpy(), df_train["Income"].to_numpy())
+    # model.fit(X_train.to_numpy(), y_train.to_numpy())
+    # y_pred = model.predict(X_test.to_numpy())
 
-    # evaluate the model
-    print('R2: %.3f' % r2_score(y_test, y_pred))
-    print("pred", y_pred.round(3))
-    print("true", y_test.values.round(3))
+    # # evaluate the model
+    # print('R2: %.3f' % r2_score(y_test, y_pred))
+    # print("pred", y_pred.round(3))
+    # print("true", y_test.values.round(3))
 
     return model
 
 def svr_model_train(df_train):
-    X_train, X_test, y_train, y_test = train_test_split(df_train.drop("Income",axis=1), df_train["Income"], test_size=0.2, random_state=2)
+    # X_train, X_test, y_train, y_test = train_test_split(df_train.drop("Income",axis=1), df_train["Income"], test_size=0.2, random_state=2)
     model = SVR(degree=3, C=100, epsilon=0.1)
+    X_train = df_train.drop("Income",axis=1).to_numpy()
+    y_train = df_train["Income"].to_numpy()
+
     # sixdubble the training data by copying it, good for 3D data
     X_train = np.concatenate((X_train, X_train, X_train, X_train, X_train, X_train), axis=0)
     y_train = np.concatenate((y_train, y_train, y_train, y_train, y_train, y_train), axis=0)
     
     model.fit(X_train, y_train)
-    y_pred = model.predict(X_test.to_numpy())
+    # y_pred = model.predict(X_test.to_numpy())
 
-    # evaluate the model
-    print('R2: %.3f' % r2_score(y_test, y_pred))
-    print("pred", y_pred.round(3))
-    print("true", y_test.values.round(3))
+    # # evaluate the model
+    # print('R2: %.3f' % r2_score(y_test, y_pred))
+    # print("pred", y_pred.round(3))
+    # print("true", y_test.values.round(3))
 
     return model
 
-def f(x, x_prim, y_prim, computed_val, lam):
+def f(x, x_prim, y_prim, computed_val, lam, std=None):
+    if std is not None:
+        # check std right dimension
+        if std.shape[0] != x.shape[1]:
+            raise Exception("std has wrong dimension")
+        x = np.divide(x, std)
+        x_prim = np.divide(x_prim, std)
     val = np.linalg.norm(x - x_prim, axis=1).reshape(-1,1) + (lam * (computed_val - y_prim)**2).reshape(-1,1)
     return val
 
@@ -113,11 +125,17 @@ def visualize_f(f, model, x, des_out, lam, df_train):
     # generates grid and plots f, in 2D if one input feature, in 3D if two input features
     # generate a grid of points to plot the model's predictions
     fig = plt.figure()
+    # calc std for each feature in training data. Remove feature name
+    std = df_train.drop("Income", axis=1).std().to_numpy().reshape(-1)
+    output_data = df_train["Income"]
+    input_data = df_train.drop("Income", axis=1)
     if x.shape[1] == 1:
         x_min, x_max = df_train.iloc[:, 0].min(), df_train.iloc[:, 0].max()
         x_prim = np.linspace(x_min, x_max, 100).reshape(-1, 1)
-        y = f(x, x_prim, des_out, model.predict(x_prim).reshape(-1,1), lam)
-        plt.plot(x_prim, y, color="red")
+        y = f(x, x_prim, des_out, model.predict(x_prim).reshape(-1,1), lam, std=std)
+        plt.plot(x_prim, y, color="magenta")
+        plt.xlabel(input_data.columns[0])
+        plt.ylabel("counterfactual value")
     elif x.shape[1] == 2:
         # get min and max of for input feature in training data
         x_min, x_max = df_train.iloc[:, 0].min(), df_train.iloc[:, 0].max()
@@ -126,9 +144,12 @@ def visualize_f(f, model, x, des_out, lam, df_train):
         y_prim = np.linspace(y_min, y_max, 100)
         x_prim, y_prim = np.meshgrid(x_prim, y_prim)
         xy_prim = np.c_[x_prim.ravel(), y_prim.ravel()]
-        z = f(x, xy_prim, des_out, model.predict(xy_prim).reshape(-1,1), lam)
+        z = f(x, xy_prim, des_out, model.predict(xy_prim).reshape(-1,1), lam, std=std)
         ax = fig.add_subplot(111, projection="3d")
-        ax.plot_surface(x_prim, y_prim, z.reshape(x_prim.shape), alpha=0.5, color="red")
+        ax.set_xlabel(df_train.columns[0])
+        ax.set_ylabel(df_train.columns[1])
+        ax.set_zlabel("counterfactual value")
+        ax.plot_surface(x_prim, y_prim, z.reshape(x_prim.shape), antialiased=False, cmap="plasma")
     else:
         print("Cannot visualize data with more than 2 input features")
 
@@ -237,28 +258,30 @@ def main():
     df_train = pd.read_csv(data_path)
     df_train = df_train.rename(columns = lambda x:re.sub('[^A-Za-z0-9_]+', '', x))
     df_train = df_train.drop(columns=['Unnamed0'])
+    std = df_train.drop("Income", axis=1).std().to_numpy().reshape(-1)
+
     # print(df_train.head())
 
     # visualize data
     # visualize(df_train)
 
     # train model
-    # gmb_model_train(df_train)
-    # logistic_model_train(df_train)
     # model = linear_model_train(df_train)
+    # visualize_regressor(df_train, model)
     model = dct_model_train(df_train)
+    # visualize_regressor(df_train, model)
     # model = svr_model_train(df_train)
 
     # visualize regressor
-    visualize_regressor(df_train, model)
+    # visualize_regressor(df_train, model)
 
     # # Try BO on regressor
     # BO_on_regressor(model.predict, df_train)
 
     # for seeing objective function
     x = np.array([[14]])
-    y_prim = 50
-    lam = 0.1
+    y_prim = 60
+    lam = 10 / y_prim**2
     print("x, punkt i fråga", x)
     print("y_prim, önskad output", y_prim)
     print("model.predict(x), nuvarande output", model.predict(x))
@@ -270,30 +293,30 @@ def main():
     # objective function for BO
     x = np.array([[14]])
     y_prim = 50
-    lam = 5
-    func = lambda x_prim: f(x, x_prim, y_prim, model.predict(x_prim), lam)
+    lam = 5/y_prim**2
+    func = lambda x_prim: f(x, x_prim, y_prim, model.predict(x_prim), lam, std=std)
     print("x, punkt i fråga", x)
     print("y_prim, önskad output", y_prim)
     print("f(x), nuvarande output", func(x))
     BO_on_regressor(func, df_train)
 
-    # # For testing own acquisition function
-    # # define functions
-    # x = np.array([[14]])
-    # y_prim = 50
-    # lam = 5
-    # objective_func = lambda x_prim, func_val: f(x, x_prim, y_prim, func_val, lam)
-    # dist_func = lambda x_prim, current_point: np.linalg.norm(x_prim-current_point, axis=1)
-    # acq_func = CF_acquisition(dist_func, y_prim, x, lam).get_CF_EI()
-    # bo_test_own(model.predict, objective_func, acq_func, df_train, y_prim=y_prim)
+    # For testing own acquisition function
+    # define functions
+    x = np.array([[14]])
+    y_prim = 50
+    lam = 10/y_prim**2
+    objective_func = lambda x_prim, func_val: f(x, x_prim, y_prim, func_val, lam, std=std)
+    dist_func = lambda x_prim, current_point: np.linalg.norm(np.divide(x_prim-current_point, std), axis=1)
+    acq_func = CF_acquisition(dist_func, y_prim, x, lam).get_CF_EI()
+    bo_test_own(model.predict, objective_func, acq_func, df_train, y_prim=y_prim)
 
     # # compare with other optimizers
     # x = np.array([[14]])
     # y_prim = 50
-    # lam = 5
-    # objective_func = lambda x_prim, func_val: f(x, x_prim, y_prim, func_val, lam)
+    # lam = 5/y_prim**2
+    # objective_func = lambda x_prim, func_val: f(x, x_prim, y_prim, func_val, lam, std=std)
     # opt_func = lambda x_prim: objective_func(x_prim, model.predict(x_prim))
-    # dist_func = lambda x_prim, current_point: np.linalg.norm(x_prim-current_point, axis=1)
+    # dist_func = lambda x_prim, current_point: np.linalg.norm(np.divide(x_prim-current_point, std), axis=1)
     # acq_func = CF_acquisition(dist_func, y_prim, x, lam).get_CF_EI()
     # comparison(model.predict, df_train, opt_func, objective_func, acq_func, y_prim)
 
