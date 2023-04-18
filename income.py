@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score
@@ -261,7 +262,7 @@ def grid_search(function, grid_level, bounds):
     opt_point = grid[opt_index]
     return opt_point, y[opt_index]
 
-def experiment_1_1D(df_train, model):
+def experiment_1_1D(df_train, model, folder):
     # init data
     input_data = df_train.drop("Income", axis=1)
     output_data = df_train["Income"]
@@ -271,7 +272,9 @@ def experiment_1_1D(df_train, model):
     margin1 = (max1 - min1) * 0.1
     bounds = np.array([[min1 - margin1, max1 + margin1]])
 
-    grid = 100
+    np.random.seed(1234)
+
+    grid = 20
 
     # generated points between min and max of data
     x = np.linspace(input_data.min(), input_data.max(), grid)
@@ -283,12 +286,12 @@ def experiment_1_1D(df_train, model):
     base_lambda = 10
 
     n_starting_points = 2
-    n_max_iterations = 15
+    n_max_iterations = 30
     n_stop = 3
 
-    evals = {"BO": [], "Random": [], "Quasi": [], "Sep_BO": []}
-    error_x = {"BO": [], "Random": [], "Quasi": [], "Sep_BO": []}
-    error_val = {"BO": [], "Random": [], "Quasi": [], "Sep_BO": []}
+    evals = {"BO": [], "Random_10": [], "Random_20": [], "Random_40": [], "Quasi": [], "Sep_BO": []}
+    error_x = {"BO": [], "Random_10": [], "Random_20": [], "Random_40": [], "Quasi": [], "Sep_BO": []}
+    error_val = {"BO": [], "Random_10": [], "Random_20": [], "Random_40": [], "Quasi": [], "Sep_BO": []}
 
     dist_func = lambda point1, point2: np.linalg.norm(np.divide(point1-point2, std), axis=1)
     for point in current_points:
@@ -310,6 +313,7 @@ def experiment_1_1D(df_train, model):
             # bo_normal.make_plots()
             # plt.show()
             evals["BO"].append(bo_normal.number_of_evaluations_f)
+
             # Separated BO
             bo_separated = BayesianOptimization(f = model, obj_func=objective_func, acquisition=acq_func, dim = 1, 
                                                 bounds = bounds, n_iter=n_max_iterations, n_init=n_starting_points,  
@@ -318,14 +322,30 @@ def experiment_1_1D(df_train, model):
             # bo_separated.make_plots(y_prim=y_prim)
             # plt.show()
             evals["Sep_BO"].append(bo_separated.number_of_evaluations_f)
-            # Random
-            alt_random = ComparisonOptimizers(opt_func, 1, bounds=bounds, method = 'random',
-                                                n_iter=n_max_iterations, n_init=n_starting_points, n_stop_iter=n_stop,
+
+            # Random with 10 total points
+            alt_random_10 = ComparisonOptimizers(opt_func, 1, bounds=bounds, method='random',
+                                                n_iter=10-n_starting_points, n_init=n_starting_points, n_stop_iter=n_stop,
                                                 noise_std=0)
-            alt_random.run()
+            alt_random_10.run()
             # alt_random.make_plots()
             # plt.show()
-            evals["Random"].append(alt_random.n_evals)
+            evals["Random_10"].append(alt_random_10.n_evals)
+
+            # Random with 20 total points
+            alt_random_20 = ComparisonOptimizers(opt_func, 1, bounds=bounds, method='random',
+                                                n_iter=20-n_starting_points, n_init=n_starting_points, n_stop_iter=n_stop,
+                                                noise_std=0)
+            alt_random_20.run()
+            evals["Random_20"].append(alt_random_20.n_evals)
+
+            # Random with 40 total points
+            alt_random_40 = ComparisonOptimizers(opt_func, 1, bounds=bounds, method='random',
+                                                n_iter=40-n_starting_points, n_init=n_starting_points, n_stop_iter=n_stop,
+                                                noise_std=0)
+            alt_random_40.run()
+            evals["Random_40"].append(alt_random_40.n_evals)
+
             # Quasi
             alt_quasi = ComparisonOptimizers(opt_func, 1, bounds=bounds, method='l-bfgs-b',
                                                 n_iter=n_max_iterations, n_init=n_starting_points, n_stop_iter=n_stop,
@@ -340,34 +360,55 @@ def experiment_1_1D(df_train, model):
             # calculate error, distance between optimal point and best found point
             error_x["BO"].append(dist_func(opt_x, bo_normal.opt_x))
             error_x["Sep_BO"].append(dist_func(opt_x, bo_separated.opt_x))
-            error_x["Random"].append(dist_func(opt_x, alt_random.opt_x))
+            error_x["Random_10"].append(dist_func(opt_x, alt_random_10.opt_x))
+            error_x["Random_20"].append(dist_func(opt_x, alt_random_20.opt_x))
+            error_x["Random_40"].append(dist_func(opt_x, alt_random_40.opt_x))
             error_x["Quasi"].append(dist_func(opt_x, alt_quasi.opt_x))
             error_val["BO"].append(np.abs(opt_val - bo_normal.opt_val))
             error_val["Sep_BO"].append(np.abs(opt_val - bo_separated.opt_val))
-            error_val["Random"].append(np.abs(opt_val - alt_random.opt_val))
+            error_val["Random_10"].append(np.abs(opt_val - alt_random_10.opt_val))
+            error_val["Random_20"].append(np.abs(opt_val - alt_random_20.opt_val))
+            error_val["Random_40"].append(np.abs(opt_val - alt_random_40.opt_val))
             error_val["Quasi"].append(np.abs(opt_val - alt_quasi.opt_val))
+
+             # save data in csv file
+            df = pd.DataFrame({"BO": evals["BO"], "Sep_BO": evals["Sep_BO"], "Random_10": evals["Random_10"],
+                                "Random_20": evals["Random_20"], "Random_40": evals["Random_40"], "Quasi": evals["Quasi"]})
+            # save it in folder, create folder if it does not exist
+            if not os.path.exists(folder):
+                os.makedirs(folder)
+            df.to_csv(folder+"/evals.csv", index=False)
+            df = pd.DataFrame({"BO": error_x["BO"], "Sep_BO": error_x["Sep_BO"], "Random_10": error_x["Random_10"],
+                                "Random_20": error_x["Random_20"], "Random_40": error_x["Random_40"], "Quasi": error_x["Quasi"]})
+            df.to_csv(folder+"/error_x.csv", index=False)
+            df = pd.DataFrame({"BO": error_val["BO"], "Sep_BO": error_val["Sep_BO"], "Random_10": error_val["Random_10"],
+                                "Random_20": error_val["Random_20"], "Random_40": error_val["Random_40"], "Quasi": error_val["Quasi"]})
+            df.to_csv(folder+"/error_val.csv", index=False)
+
     
     # plot results
     # make two boxplots, one for evals, one for error. Two separe figures
     fig1, ax1 = plt.subplots()
-    ax1.boxplot([evals["BO"], evals["Random"], evals["Quasi"], evals["Sep_BO"]])
-    ax1.set_xticklabels(["BO", "Random", "Quasi", "SBO"])
+    ax1.boxplot([evals["BO"], evals["Random_10"], evals["Random_20"], evals["Random_40"], evals["Quasi"], evals["Sep_BO"]])
+    ax1.set_xticklabels(["BO", "Random_10", "Random_20", "Random_40", "Quasi", "SBO"])
     ax1.set_ylabel("Number of evaluations")
 
     fig2, ax2 = plt.subplots()
-    ax2.boxplot([error_x["BO"], error_x["Random"], error_x["Quasi"], error_x["Sep_BO"]])
-    ax2.set_xticklabels(["BO", "Random", "Quasi", "SBO"])
+    ax2.boxplot([error_x["BO"], error_x["Random_10"], error_x["Random_20"], error_x["Random_40"], error_x["Quasi"], error_x["Sep_BO"]])
+    ax2.set_xticklabels(["BO", "Random_10", "Random_20", "Random_40", "Quasi", "SBO"])
     ax2.set_ylabel("Error - Distance to optimal point")
 
     fig4, ax4 = plt.subplots()
-    ax4.boxplot([error_val["BO"], error_val["Random"], error_val["Quasi"], error_val["Sep_BO"]])
-    ax4.set_xticklabels(["BO", "Random", "Quasi", "SBO"])
+    ax4.boxplot([error_val["BO"], error_val["Random_10"], error_val["Random_20"], error_val["Random_40"], error_val["Quasi"], error_val["Sep_BO"]])
+    ax4.set_xticklabels(["BO", "Random_10", "Random_20", "Random_40", "Quasi", "SBO"])
     ax4.set_ylabel("Error - Distance to optimal value")
 
     # make a plot for accumulated error
     fig3, ax3 = plt.subplots()
     ax3.plot(np.cumsum(error_x["BO"]), label="BO")
-    ax3.plot(np.cumsum(error_x["Random"]), label="Random")
+    ax3.plot(np.cumsum(error_x["Random_10"]), label="Random_10")
+    ax3.plot(np.cumsum(error_x["Random_20"]), label="Random_20")
+    ax3.plot(np.cumsum(error_x["Random_40"]), label="Random_40")
     ax3.plot(np.cumsum(error_x["Quasi"]), label="Quasi")
     ax3.plot(np.cumsum(error_x["Sep_BO"]), label="SBO")
     ax3.legend()
@@ -376,20 +417,14 @@ def experiment_1_1D(df_train, model):
 
     fig5, ax5 = plt.subplots()
     ax5.plot(np.cumsum(error_val["BO"]), label="BO")
-    ax5.plot(np.cumsum(error_val["Random"]), label="Random")
+    ax5.plot(np.cumsum(error_val["Random_10"]), label="Random_10")
+    ax5.plot(np.cumsum(error_val["Random_20"]), label="Random_20")
+    ax5.plot(np.cumsum(error_val["Random_40"]), label="Random_40")
     ax5.plot(np.cumsum(error_val["Quasi"]), label="Quasi")
     ax5.plot(np.cumsum(error_val["Sep_BO"]), label="SBO")
     ax5.legend()
     ax5.set_xlabel("# of counterfactuals computed")
     ax5.set_ylabel("Accumulated Error - Distance to optimal value")
-
-    # save data in csv file
-    df = pd.DataFrame({"BO": evals["BO"], "Random": evals["Random"], "Quasi": evals["Quasi"], "SBO": evals["Sep_BO"]})
-    df.to_csv("evals.csv")
-    df = pd.DataFrame({"BO": error_x["BO"], "Random": error_x["Random"], "Quasi": error_x["Quasi"], "SBO": error_x["Sep_BO"]})
-    df.to_csv("error_x.csv")
-    df = pd.DataFrame({"BO": error_val["BO"], "Random": error_val["Random"], "Quasi": error_val["Quasi"], "SBO": error_val["Sep_BO"]})
-    df.to_csv("error_val.csv")
 
 def main():
     """Main function"""
@@ -408,9 +443,15 @@ def main():
     # train model
     # model = linear_model_train(df_train)
     # visualize_regressor(df_train, model)
-    model = dct_model_train(df_train)
+    # model = dct_model_train(df_train)
     # visualize_regressor(df_train, model)
     # model = svr_model_train(df_train)
+
+    models = [dct_model_train(df_train), svr_model_train(df_train), linear_model_train(df_train)]
+    folders = ["dct", "svr", "linear"]
+    for model, folder in zip(models, folders):
+         # Experiment 1 - 1D
+        experiment_1_1D(df_train, model.predict, folder)
 
     # visualize regressor
     # visualize_regressor(df_train, model)
@@ -459,10 +500,6 @@ def main():
     # dist_func = lambda x_prim, current_point: np.linalg.norm(np.divide(x_prim-current_point, std), axis=1)
     # acq_func = CF_acquisition(dist_func, y_prim, x, lam).get_CF_EI()
     # comparison(model.predict, df_train, opt_func, objective_func, acq_func, y_prim)
-
-    # Experiment 1 - 1D
-    experiment_1_1D(df_train, model.predict)
-
 
     plt.show()
 
