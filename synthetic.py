@@ -114,31 +114,31 @@ def main():
     # visualize_synthetic(model)
     x = np.array([[45]])
     y_prim = 800
-    lam = 100 / y_prim**2
+    lam = 10 / y_prim**2
     print("x, punkt i fråga", x)
     print("y_prim, önskad output", y_prim)
     print("model.predict(x), nuvarande output", model.predict(x))
     visualize_f_syn(f, model, x, y_prim, lam, df_train)
 
-    # objective function for BO
-    x = np.array([[45]])
-    y_prim = 800
-    lam = 100/y_prim**2
-    func = lambda x_prim: f(x, x_prim, y_prim, model.predict(x_prim), lam, std=std)
-    print("x, punkt i fråga", x)
-    print("y_prim, önskad output", y_prim)
-    print("f(x), nuvarande output", func(x))
-    BO_on_regressor(func, df_train)
-
-    # # For testing own acquisition function
-    # # define functions
+    # # objective function for BO
     # x = np.array([[45]])
     # y_prim = 800
     # lam = 10/y_prim**2
-    # objective_func = lambda x_prim, func_val: f(x, x_prim, y_prim, func_val, lam, std=std)
-    # dist_func = lambda x_prim, current_point: np.linalg.norm(np.divide(x_prim-current_point, std), axis=1)
-    # acq_func = CF_acquisition(dist_func, y_prim, x, lam).get_CF_EI()
-    # separated_BO(model.predict, objective_func, acq_func, df_train, y_prim=y_prim)
+    # func = lambda x_prim: f(x, x_prim, y_prim, model.predict(x_prim), lam, std=std)
+    # print("x, punkt i fråga", x)
+    # print("y_prim, önskad output", y_prim)
+    # print("f(x), nuvarande output", func(x))
+    # BO_on_regressor(func, df_train)
+
+    # For testing own acquisition function
+    # define functions
+    x = np.array([[45]])
+    y_prim = 800
+    lam = 10/y_prim**2
+    objective_func = lambda x_prim, func_val: f(x, x_prim, y_prim, func_val, lam, std=std)
+    dist_func = lambda x_prim, current_point: np.linalg.norm(np.divide(x_prim-current_point, std), axis=1)
+    acq_func = CF_acquisition(dist_func, y_prim, x, lam).get_CF_EI()
+    separated_BO(model.predict, objective_func, acq_func, df_train, y_prim=y_prim)
 
 
     plt.show()
