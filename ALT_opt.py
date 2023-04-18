@@ -131,10 +131,11 @@ class ComparisonOptimizers:
         # Will not count these as function evaluations as they will be done in the optimization loop
         # these here are for us.
         n_func_eval = 0
-
         def min_func(x):
+            nonlocal n_func_eval
             x = x.reshape(-1, self.dim)
             y = self.opt_func(x).reshape(-1)
+            n_func_eval += 1
             return y
 
         def callback(x):
@@ -145,7 +146,7 @@ class ComparisonOptimizers:
         allowed_iters = self.n_iter // len(X_inits)
         for x0 in X_inits:
             res = minimize(min_func, x0, method=self.method, bounds=self.bounds, callback=callback, options={'maxiter': allowed_iters})
-            n_func_eval += res.nfev
+            # n_func_eval += res.nfev
         
         # print("Number of function evaluations: ", n_func_eval)
         return n_func_eval
@@ -159,11 +160,11 @@ class ComparisonOptimizers:
         else:
             raise ValueError("Method not implemented")
 
-        # print optimal value and point
-        print("Method used: ", self.method)
-        print("Optimal value found: ", self.opt_val)
-        print("Optimal point found: ", self.opt_x)
-        print("Number of function evaluations: ", func_evals)
+        # # print optimal value and point
+        # print("Method used: ", self.method)
+        # print("Optimal value found: ", self.opt_val)
+        # print("Optimal point found: ", self.opt_x)
+        # print("Number of function evaluations: ", func_evals)
         self.n_evals = func_evals
 
     def make_plots(self, save=False, save_path=None):
