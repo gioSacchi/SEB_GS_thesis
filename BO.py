@@ -7,8 +7,8 @@ from src.features.Model import GPmodel
 import time
 
 class BayesianOptimization:
-    def __init__(self, f, dim, obj_func = None, acquisition='EI', kernel=None, noise_std=1e-5, bounds=None, 
-                 n_init=2, n_iter=10, n_opt = 50, normalize_Y=True, random_state=1234, n_stop_iter=2,
+    def __init__(self, f, dim, bounds, obj_func = None, acquisition='EI', kernel=None, noise_std=1e-5, 
+                 n_init=2, n_iter=10, n_opt = None, normalize_Y=True, random_state=1234, n_stop_iter=2,
                  acq_threshold=0.01, init_points=None, plotting_freq=None, n_restarts=20):
         # set seed
         np.random.seed(random_state)
@@ -30,11 +30,10 @@ class BayesianOptimization:
 
         self.dim = dim
         # check bounds dims
-        if bounds is not None:
-            if bounds.shape[0] != self.dim:
-                raise ValueError('Bounds dimension does not match the dimension of the data')
-
+        if bounds.shape[0] != self.dim:
+            raise ValueError('Bounds dimension does not match the dimension of the data')
         self.bounds = bounds
+
         if init_points is not None:
             if init_points.shape[1] != self.dim:
                 raise ValueError('Init_points dimension does not match the dimension of the data')
@@ -52,7 +51,12 @@ class BayesianOptimization:
                 self.plotting_freq = 5
 
         self.n_iter = n_iter
-        self.n_opt = n_opt
+        if n_opt is None:
+            # make n_opt i proportional to area of bounds
+            area = np.prod(np.diff(bounds, axis=1))
+            self.n_opt = int(np.ceil(0.35 * area))
+        else:
+            self.n_opt = n_opt
 
         self.noisy_evaluations = True if noise_std > 0 else False
         self.opt_val = np.inf
@@ -203,7 +207,7 @@ class BayesianOptimization:
                 obj_next = obj_next.reshape(-1,1)
         else:
             obj_next = None
-        return X_next, Y_next, obj_next
+        return X_next, Y_next, obj_next, -min_val
     
     def check_and_fix_dimenstion(self, X):
         # check if X is 2D array and if not reshape it
@@ -223,7 +227,7 @@ class BayesianOptimization:
         
         return X
     
-    def stop_BO(self, opt_iter):
+    def stop_BO(self, acq_val, opt_iter, updated):
         # # if opt_val has not improved for n_stop_iter iterations, stop BO
         # current_iter = self.X_samples.shape[0]-self.n_init
         # if current_iter - opt_iter >= self.n_stop_iter:
@@ -232,8 +236,10 @@ class BayesianOptimization:
         # stop if the ratio of acquisition function to optimal value is below threshold
         # stop is false if ratio is above threshold, number has been below threshold for at most n_stop_iter iterations
         # and is true if ratio has been below threshold for n_stop_iter iterations, i.e. stop
-        X_next = self.X_samples[-1, :].reshape(-1, self.dim)
-        ratio = self.acquisition(X_next, self.model, self.opt_val)/self.opt_val
+        ratio = acq_val/self.opt_val
+        print('ratio: ', ratio)
+        print('opt_val: ', self.opt_val)
+        print('acq_val: ', acq_val)
         if ratio < self.acq_threshold:
             if self.stop is False:
                 self.stop = 1
@@ -252,7 +258,7 @@ class BayesianOptimization:
             self.model.fit(self.X_samples, self.Y_samples)
             # get next sample
             # t1 = time.time()
-            X_next, Y_next, obj_next = self.next_sample()
+            X_next, Y_next, obj_next, acq_val = self.next_sample()
             # t2 = time.time()
             # print('Time to get next sample: ', t2-t1)
             # update samples
@@ -262,7 +268,7 @@ class BayesianOptimization:
             if updated:
                 opt_iter = i
             # check if we should stop BO
-            self.stop_BO(opt_iter)
+            self.stop_BO(acq_val, opt_iter, updated)
             if self.stop is True:
                 # only stop when self.stop is True, not 1 or 2 etc
                 print('BO stopped after {} iterations'.format(i))
