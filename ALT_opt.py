@@ -56,6 +56,8 @@ class ComparisonOptimizers:
             
         self.X_samples = None
         self.Y_samples = None
+
+        self.n_evals = None
     
     def init_samples(self, compute_y=True):
         # initialize samples
@@ -162,6 +164,7 @@ class ComparisonOptimizers:
         print("Optimal value found: ", self.opt_val)
         print("Optimal point found: ", self.opt_x)
         print("Number of function evaluations: ", func_evals)
+        self.n_evals = func_evals
 
     def make_plots(self, save=False, save_path=None):
         # make plots
