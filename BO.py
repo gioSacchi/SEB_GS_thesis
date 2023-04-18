@@ -54,7 +54,7 @@ class BayesianOptimization:
         if n_opt is None:
             # make n_opt i proportional to area of bounds
             area = np.prod(np.diff(bounds, axis=1))
-            self.n_opt = int(np.ceil(0.35 * area))
+            self.n_opt = int(np.ceil(20 * area))
         else:
             self.n_opt = n_opt
 
@@ -237,9 +237,7 @@ class BayesianOptimization:
         # stop is false if ratio is above threshold, number has been below threshold for at most n_stop_iter iterations
         # and is true if ratio has been below threshold for n_stop_iter iterations, i.e. stop
         ratio = acq_val/self.opt_val
-        print('ratio: ', ratio)
-        print('opt_val: ', self.opt_val)
-        print('acq_val: ', acq_val)
+        # print('ratio: ', ratio)
         if ratio < self.acq_threshold:
             if self.stop is False:
                 self.stop = 1
@@ -274,9 +272,9 @@ class BayesianOptimization:
                 print('BO stopped after {} iterations'.format(i))
                 break
         
-        # print final results
-        print('Final opt_val: ', self.opt_val)
-        print('Final opt_x: ', self.opt_x)
+        # # print final results
+        # print('Final opt_val: ', self.opt_val)
+        # print('Final opt_x: ', self.opt_x)
     
     def make_plots(self, y_prim=None, save=False, save_path=None):
         # call correct function based on dim
