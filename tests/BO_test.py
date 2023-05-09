@@ -16,8 +16,9 @@ def g(X, noise=0):
 def bo_test():
     # bounds = np.array([[-1.0, 2.0], [-2.0, 1.0]])
     bounds = np.array([[-1.0, 2.0]])
+    X_init = np.array([[-0.9], [1.1]])    
     # bo = BayesianOptimization(g, 2, bounds=bounds, n_iter=42, n_init=4, noise_std=0, normalize_Y=True, n_stop_iter=40)
-    bo = BayesianOptimization(f, 1, bounds=bounds, n_iter=5, n_init=3, noise_std=0, n_stop_iter=None, normalize_Y=True, n_opt=2000, n_restarts=100, random_state=32)
+    bo = BayesianOptimization(f, 1, bounds=bounds, init_points=X_init, n_iter=10, n_init=3, noise_std=0, n_stop_iter=None, normalize_Y=True, n_opt=2000, n_restarts=100, random_state=32)
     bo.run_BO()
     bo.make_plots(save=True)
 
