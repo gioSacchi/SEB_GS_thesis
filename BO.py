@@ -34,11 +34,23 @@ class BayesianOptimization:
             raise ValueError('Bounds dimension does not match the dimension of the data')
         self.bounds = bounds
 
+        # check init_points dims
         if init_points is not None:
-            if init_points.shape[1] != self.dim:
-                raise ValueError('Init_points dimension does not match the dimension of the data')
-            # if init_points is passed, then n_init is set to the number of init_points
-            self.n_init = init_points.shape[0]
+            # check if np array or touple
+            if isinstance(init_points, np.ndarray):
+                # these are the X points to initialize with
+                if init_points.shape[1] != self.dim:
+                    raise ValueError('Init_points dimension does not match the dimension of the data')
+                self.n_init = init_points.shape[0]
+            elif isinstance(init_points, tuple):
+                # these are X and Y points to initialize with
+                if init_points[0].shape[1] != self.dim:
+                    raise ValueError('Init_points dimension does not match the dimension of the data')
+                if init_points[1].shape[1] != 1:
+                    raise ValueError('Init_points dimension does not match the dimension of the data')
+                if init_points[0].shape[0] != init_points[1].shape[0]:
+                    raise ValueError('Init_points dimension does not match the dimension of the data')
+                self.n_init = init_points[0].shape[0]
         else:
             self.n_init = n_init
 
@@ -58,7 +70,6 @@ class BayesianOptimization:
         else:
             self.n_opt = n_opt
 
-        self.noisy_evaluations = True if noise_std > 0 else False
         self.opt_val = np.inf
         self.opt_x = None
         self.acq_threshold = acq_threshold
@@ -70,27 +81,40 @@ class BayesianOptimization:
         else:
             self.n_stop_iter = n_stop_iter
 
+        # initialize GP
+        self.kernel = kernel
+        self.noisy_evaluations = True if noise_std > 1e-5 else False
+        self.noise_std = noise_std
+        self.model = GPmodel(kernel=kernel, noise=noise_std, normalize_Y=normalize_Y, n_restarts=n_restarts)
+
         # initialize samples
         self.X_samples = None
         self.Y_samples = None
         self.obj_samples = None
+        self.number_of_evaluations_f = 0
         self.init_samples(init_points=init_points)
-        # initialize GP
-        self.kernel = kernel
-        self.noise_std = noise_std
-        self.model = GPmodel(kernel=kernel, noise=noise_std, normalize_Y=normalize_Y, n_restarts=n_restarts)
-        self.number_of_evaluations_f = self.n_init
 
     def init_samples(self, init_points=None):
-        # initialize samples by sampling Xs uniformly from the bounds and computing Ys
+        # check init_points dims and initialize samples
         if init_points is not None:
-            X_samples = init_points
+            # check if np array or touple
+            if isinstance(init_points, np.ndarray):
+                X_samples = init_points
+                Y_samples = self.f(X_samples)
+                self.number_of_evaluations_f += self.n_init
+            elif isinstance(init_points, tuple):
+                X_samples = init_points[0]
+                Y_samples = init_points[1]
+                # do not update number of evaluations because these are not new evaluations of f which is expensive!!
         else:
+            # initialize samples by sampling Xs uniformly from the bounds and computing Ys
             X_samples = np.random.uniform(self.bounds[:, 0], self.bounds[:, 1], size=(self.n_init, self.bounds.shape[0]))
-        Y_samples = self.f(X_samples)
+            Y_samples = self.f(X_samples)
+            self.number_of_evaluations_f += self.n_init
         # check output dimension, if (n_init,) then reshape to (n_init, 1)
         if Y_samples.shape == (self.n_init,):
             Y_samples = Y_samples.reshape(-1,1)
+        # update samples
         self.X_samples = X_samples
         self.Y_samples = Y_samples
         # if we have objective function, compute objective function values
@@ -252,13 +276,15 @@ class BayesianOptimization:
         opt_iter = 0
         # run BO loop
         for i in range(self.n_iter):
+            # print('Loop it: ', i)
             # fit GP to samples
+            # t1 = time.time()
             self.model.fit(self.X_samples, self.Y_samples)
+            # print('Time to fit GP: ', time.time()-t1)
             # get next sample
             # t1 = time.time()
             X_next, Y_next, obj_next, acq_val = self.next_sample()
-            # t2 = time.time()
-            # print('Time to get next sample: ', t2-t1)
+            # print('Time to get next sample: ', time.time()-t1)
             # update samples
             self.update_samples(X_next, Y_next, obj_next)
             # update opt_val
