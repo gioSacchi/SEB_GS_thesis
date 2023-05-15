@@ -276,7 +276,7 @@ class BayesianOptimization:
         opt_iter = 0
         # run BO loop
         for i in range(self.n_iter):
-            # print('Loop it: ', i)
+            print('Loop it: ', i)
             # fit GP to samples
             # t1 = time.time()
             self.model.fit(self.X_samples, self.Y_samples)

@@ -16,6 +16,10 @@ from BO import BayesianOptimization
 from src.features.CF_acq import CF_acquisition
 from ALT_opt import ComparisonOptimizers
 
+# import experiment
+from warm_exp import warm_starting_1D, plot_warm_starting
+from exp_2D import num_evals_and_error_2D
+
 def visualize(df_train):
     """Visualize data"""
     # plot the data points, in 2D if one input feature, in 3D if two input features
@@ -265,184 +269,6 @@ def grid_search(function, grid_level, bounds):
     opt_point = grid[opt_index]
     return opt_point, y[opt_index]
 
-def sample_selection_warm(X_samples, Y_samples, max_samples_tot, method, max_samples_per_it):
-    # code to select samples from the new samples and the old samples
-    # will always select max_samples_per_it samples from the new samples and add them to the old samples
-    # if necessary, it will remove samples from the old samples to make room for the new samples
-
-    # append X_samples to samples to use them as starting points for next iteration
-    if X_samples is None and Y_samples is None:
-        n_new_samples = method.X_samples.shape[0]
-        n_to_swap = min(max_samples_per_it, n_new_samples)
-        # chose indices of samples to add
-        add_indices = np.random.choice(n_new_samples, n_to_swap, replace=False)
-        # add new samples
-        X_samples = method.X_samples[add_indices]
-        Y_samples = method.Y_samples[add_indices]
-    else:
-        nr_init_points = X_samples.shape[0]
-        new_Xs = method.X_samples[nr_init_points:]
-        new_Ys = method.Y_samples[nr_init_points:]
-        n_new_samples = new_Xs.shape[0]
-        n_to_swap = min(max_samples_per_it, n_new_samples)
-        # allow a maximum max_samples of samples
-        if nr_init_points == max_samples_tot:
-            # get indices of samples to swap
-            swap_indices_old = np.random.choice(nr_init_points, n_to_swap, replace=False)
-            swap_indices_new = np.random.choice(n_new_samples, n_to_swap, replace=False)
-            # swap samples
-            X_samples[swap_indices_old] = new_Xs[swap_indices_new]
-            Y_samples[swap_indices_old] = new_Ys[swap_indices_new]
-        elif nr_init_points + n_to_swap <= max_samples_tot:
-            # get indices of samples to add
-            add_indices = np.random.choice(n_new_samples, n_to_swap, replace=False)
-            # add new samples
-            X_samples = np.vstack((X_samples, new_Xs[add_indices]))
-            Y_samples = np.vstack((Y_samples, new_Ys[add_indices]))
-        elif nr_init_points + n_to_swap > max_samples_tot:
-            # choose randomly which samples to add to get to 50
-            n_to_take = nr_init_points + n_to_swap - max_samples_tot
-            add_indices = np.random.choice(n_new_samples, n_to_swap, replace=False)
-            take_indices = np.random.choice(nr_init_points, n_to_take, replace=False)
-            # remove samples 
-            X_samples = np.delete(X_samples, take_indices, axis=0)
-            Y_samples = np.delete(Y_samples, take_indices, axis=0)
-            # add new samples
-            X_samples = np.vstack((X_samples, new_Xs[add_indices]))
-            Y_samples = np.vstack((Y_samples, new_Ys[add_indices]))
-        else:
-            raise ValueError("Something went wrong with the samples")
-        
-        # if X_samples is None and Y_samples is None:
-        #     X_samples = method["warm_starting"].X_samples
-        #     Y_samples = method["warm_starting"].Y_samples
-        # else:
-        #     # add all new samples
-        #     X_samples = np.vstack((X_samples, method["warm_starting"].X_samples))
-        #     Y_samples = np.vstack((Y_samples, method["warm_starting"].Y_samples))
-        
-    return X_samples, Y_samples
-
-def warm_starting_1D(df_train, model, folder):
-    # init data
-    input_data = df_train.drop("Income", axis=1)
-    output_data = df_train["Income"]
-    std = input_data.std().to_numpy().reshape(-1)
-    min1 = input_data.iloc[:, 0].min()
-    max1 = input_data.iloc[:, 0].max()
-    margin1 = (max1 - min1) * 0.1
-    bounds = np.array([[min1 - margin1, max1 + margin1]])
-    np.random.seed(1234)
-    grid = 20
-
-    # generated points between min and max of data
-    x = np.linspace(input_data.min(), input_data.max(), grid)
-    current_points = x.reshape(-1, 1)
-    np.random.shuffle(current_points)
-    # generate grid of desired output values between min and max of output data
-    desired = np.linspace(output_data.min(), output_data.max(), grid)
-    np.random.shuffle(desired)
-    # generate all combinations of current points and desired output values
-    combinations = list(itertools.product(*[current_points, desired]))
-    combinations = [list(x) for x in combinations]
-    # shuffle combinations 
-    shuffled_combinations = np.random.permutation(combinations)
-    # get indices of shuffled combinations in original combinations
-    unshuffled_ind = []
-    for elem in combinations:
-        # get index of row in shuffled combinations that is equal to elem
-        index = np.where((shuffled_combinations == elem).all(axis=1))[0][0]
-        unshuffled_ind.append(index)
-        
-    base_lambda = 10
-    n_starting_points = 2
-    n_max_iterations = 50
-    n_stop = 3
-
-    warm_keys = ["warm_starting_40", "warm_starting_20", "warm_starting_10"]
-    max_samples = {"warm_starting_40": 40, "warm_starting_20": 20, "warm_starting_10": 10}
-    # warm_keys = ["warm_starting_2"]
-    # max_samples = {"warm_starting_2": 2}
-    keys = warm_keys #+ ["reference_SBO"]
-    evals = {}
-    error_x = {}
-    error_val = {}
-    X_samples = {}
-    Y_samples = {}
-    method = {}
-    for key in keys:
-        evals[key] = []
-        error_x[key] = []
-        error_val[key] = []
-        method[key] = None
-        X_samples[key] = None
-        Y_samples[key] = None
-    
-    # kernel = Matern(length_scale=1.0, length_scale_bounds=(1e-1, 1e5), nu=0.5)
-    kernel = Matern(length_scale=1.0, nu=1.5)
-    dist_func = lambda point1, point2: np.linalg.norm(np.divide(point1-point2, std), axis=1)
-
-    for point, y_prim in shuffled_combinations:
-        print("current point: ", point, " desired output: ", y_prim)
-        print("iteration: ", len(evals[keys[0]]))
-        point = point.reshape(-1, 1)
-        # define objective function
-        lam = base_lambda/y_prim**2
-        objective_func = lambda x_prim, func_val: f(point, x_prim, y_prim, func_val, lam, std=std)
-        opt_func = lambda x_prim: f(point, x_prim, y_prim, model(x_prim), lam, std=std)
-        acq_func = CF_acquisition(dist_func, y_prim, point, lam).get_CF_EI()
-        
-        for key in warm_keys:
-            # initialize method with correct initial points
-            method[key] = BayesianOptimization(f = model, obj_func=objective_func, acquisition=acq_func, dim = 1,
-                                                bounds = bounds, n_iter=n_max_iterations, n_init=n_starting_points,  
-                                                n_stop_iter=n_stop, normalize_Y=True, kernel=kernel,
-                                                init_points=None if X_samples[key] is None else (X_samples[key], Y_samples[key]), 
-                                                plotting_freq=10)
-            method[key].run_BO()
-            evals[key].append(method[key].number_of_evaluations_f)
-            # select and store new samples
-            np.random.seed(len(evals[keys[0]])+1) # because of some weird sampling bug
-            X_samples[key], Y_samples[key] = sample_selection_warm(X_samples[key], Y_samples[key], max_samples[key],
-                                                                    method[key], max_samples_per_it=1)
-
-        # method["reference_SBO"] = BayesianOptimization(f = model, obj_func=objective_func, acquisition=acq_func, dim = 1,
-        #                                     bounds = bounds, n_iter=n_max_iterations, n_init=n_starting_points,
-        #                                     n_stop_iter=n_stop, normalize_Y=True, kernel=kernel,
-        #                                     init_points=None, plotting_freq=10)
-        # method["reference_SBO"].run_BO()
-        # evals["reference_SBO"].append(method["reference_SBO"].number_of_evaluations_f)
-        
-        # find optimal point, grid search
-        opt_x, opt_val = grid_search(opt_func, 100, bounds)
-        # calculate error, distance between optimal point and best found point
-        for key in keys:
-            error_x[key].append(dist_func(opt_x, method[key].opt_x)[0])
-            error_val[key].append(np.abs(opt_val - method[key].opt_val)[0])
-
-        # save it in folder, create folder if it does not exist
-        if not os.path.exists(folder):
-            os.makedirs(folder)
-        # save data in csv file
-        df = pd.DataFrame({key: evals[key] for key in keys})
-        df.to_csv(folder+"/evals.csv", index=False)
-        df = pd.DataFrame({key: error_x[key] for key in keys})
-        df.to_csv(folder+"/error_x.csv", index=False)
-        df = pd.DataFrame({key: error_val[key] for key in keys})
-        df.to_csv(folder+"/error_val.csv", index=False)
-    
-    # unshuffle data lists and save them
-    for key in keys:
-        evals[key] = [evals[key][i] for i in unshuffled_ind]
-        error_x[key] = [error_x[key][i] for i in unshuffled_ind]
-        error_val[key] = [error_val[key][i] for i in unshuffled_ind]
-    df = pd.DataFrame({key: evals[key] for key in keys})
-    df.to_csv(folder+"/evals.csv", index=False)
-    df = pd.DataFrame({key: error_x[key] for key in keys})
-    df.to_csv(folder+"/error_x.csv", index=False)
-    df = pd.DataFrame({key: error_val[key] for key in keys})
-    df.to_csv(folder+"/error_val.csv", index=False)
-
 def num_evals_and_error_1D(df_train, model, folder):
     # init data
     input_data = df_train.drop("Income", axis=1)
@@ -569,7 +395,8 @@ def num_evals_and_error_1D(df_train, model, folder):
             df.to_csv(folder+"/error_val.csv", index=False)
 
 def plot_num_evals_and_error_1D(evals_df, error_x_df, error_val_df):
-    keys = ["BO_15", "Sep_BO_15", "BO_25", "Sep_BO_25", "Random_10", "Random_20", "Random_40", "Quasi"]
+    keys = ["BO_15", "Sep_BO_15", "BO_25", "Sep_BO_25", "Quasi", "Random_10", "Random_20", "Random_40"]
+    labels = [r"BO $\nu=1.5$", r"Sep BO $\nu=1.5$", r"BO $\nu=2.5$", r"Sep BO $\nu=2.5$", "Quasi", "Rand_10", "Rand_20", "Rand_40"]
     evals = {key: evals_df[key].values for key in keys}
     error_x = {key: error_x_df[key].values for key in keys}
     error_val = {key: error_val_df[key].values for key in keys}
@@ -592,21 +419,21 @@ def plot_num_evals_and_error_1D(evals_df, error_x_df, error_val_df):
 
     fig1, ax1 = plt.subplots()
     ax1.boxplot([evals[key] for key in keys], showmeans=True)
-    ax1.set_xticklabels([r"BO $\nu=1.5$", r"BO $\nu=2.5$", r"SBO $\nu=1.5$", r"SBO $\nu=2.5$", "Quasi", "Rand_10", "Rand_20", "Rand_40"], rotation=30)
+    ax1.set_xticklabels(labels, rotation=30)
     ax1.set_ylabel("Number of evaluations")
     ax1.yaxis.set_label_position("right")
     fig1.subplots_adjust(top=0.97, bottom=0.13, right=0.95)
 
     fig2, ax2 = plt.subplots()
     ax2.boxplot([error_x[key] for key in keys], showmeans=True)
-    ax2.set_xticklabels([r"BO $\nu=1.5$", r"BO $\nu=2.5$", r"SBO $\nu=1.5$", r"SBO $\nu=2.5$", "Quasi", "Rand_10", "Rand_20", "Rand_40"], rotation=30)
+    ax2.set_xticklabels(labels, rotation=30)
     ax2.set_ylabel("Error - Distance to optimal point")
     ax2.yaxis.set_label_position("right")
     fig2.subplots_adjust(top=0.97, bottom=0.13, right=0.95)
 
     fig4, ax4 = plt.subplots()
     ax4.boxplot([error_val[key] for key in keys], showmeans=True)
-    ax4.set_xticklabels([r"BO $\nu=1.5$", r"BO $\nu=2.5$", r"SBO $\nu=1.5$", r"SBO $\nu=2.5$", "Quasi", "Rand_10", "Rand_20", "Rand_40"], rotation=30)
+    ax4.set_xticklabels(labels, rotation=30)
     ax4.set_ylabel("Error - Distance to optimal value")
     ax4.yaxis.set_label_position("right")
     fig4.subplots_adjust(top=0.97, bottom=0.13, right=0.95)
@@ -624,34 +451,22 @@ def plot_num_evals_and_error_1D(evals_df, error_x_df, error_val_df):
 
     # make a plot for accumulated error
     fig3, ax3 = plt.subplots()
-    ax3.plot(np.cumsum(error_x["BO_15"]), label=r"BO $\nu=1.5$")
-    ax3.plot(np.cumsum(error_x["BO_25"]), label=r"BO $\nu=2.5$")
-    ax3.plot(np.cumsum(error_x["Sep_BO_15"]), label=r"SBO $\nu=1.5$")
-    ax3.plot(np.cumsum(error_x["Sep_BO_25"]), label=r"SBO $\nu=2.5$")
-    ax3.plot(np.cumsum(error_x["Random_10"]), label="Rand_10")
-    ax3.plot(np.cumsum(error_x["Random_20"]), label="Rand_20")
-    ax3.plot(np.cumsum(error_x["Random_40"]), label="Rand_40")
-    ax3.plot(np.cumsum(error_x["Quasi"]), label="Quasi")
+    for key in keys:
+        ax3.plot(np.cumsum(error_x[key]), label=key)
     ax3.legend()
     ax3.set_xlabel("# of counterfactuals computed")
     ax3.set_ylabel("Accumulated Error - Distance to optimal point")
     fig3.tight_layout()
 
     fig5, ax5 = plt.subplots()
-    ax5.plot(np.cumsum(error_val["BO_15"]), label=r"BO $\nu=1.5$")
-    ax5.plot(np.cumsum(error_val["BO_25"]), label=r"BO $\nu=2.5$")
-    ax5.plot(np.cumsum(error_val["Sep_BO_15"]), label=r"SBO $\nu=1.5$")
-    ax5.plot(np.cumsum(error_val["Sep_BO_25"]), label=r"SBO $\nu=2.5$")
-    ax5.plot(np.cumsum(error_val["Random_10"]), label="Rand_10")
-    ax5.plot(np.cumsum(error_val["Random_20"]), label="Rand_20")
-    ax5.plot(np.cumsum(error_val["Random_40"]), label="Rand_40")
-    ax5.plot(np.cumsum(error_val["Quasi"]), label="Quasi")
+    for key in keys:
+        ax5.plot(np.cumsum(error_val[key]), label=key)
     ax5.legend()
     ax5.set_xlabel("# of counterfactuals computed")
     ax5.set_ylabel("Accumulated Error - Distance to optimal value")
     fig5.tight_layout()
 
-def plot_num_evals_and_error_1D(evals_df, error_x_df, error_val_df):
+def plot_num_evals_and_error_1D_BO(evals_df, error_x_df, error_val_df):
     evals = {"BO": evals_df["BO"].values, "Sep_BO": evals_df["Sep_BO"].values}
     error_x = {"BO": error_x_df["BO"].values, "Sep_BO": error_x_df["Sep_BO"].values}
     error_val = {"BO": error_val_df["BO"].values, "Sep_BO": error_val_df["Sep_BO"].values}
@@ -701,7 +516,7 @@ def plot_num_evals_and_error_1D(evals_df, error_x_df, error_val_df):
 
 def main():
     """Main function"""
-    data_path = "src\data\Income1.csv"
+    data_path = "src\data\Income2.csv"
     # read data
     df_train = pd.read_csv(data_path)
     df_train = df_train.rename(columns = lambda x:re.sub('[^A-Za-z0-9_]+', '', x))
@@ -721,15 +536,22 @@ def main():
     # model = svr_model_train(df_train)
 
     models = [dct_model_train(df_train), svr_model_train(df_train), linear_model_train(df_train)]
+    models.reverse()
     folders = ["dct_warm", "svr_warm", "linear_warm"]
+    folders.reverse()
+
     for model, folder in zip(models, folders):
-        #  # Number of evaluations and solution error experiment - 1D
-        #  num_evals_and_error_1D(df_train, model.predict, folder)
-        # Warm start experiment - 1D
-        warm_starting_1D(df_train, model.predict, folder)
+        print(folder)
+        # # Number of evaluations and solution error experiment - 1D
+        # num_evals_and_error_1D(df_train, model.predict, folder)
+        # # Warm start experiment - 1D
+        # warm_starting_1D(df_train, model.predict, folder)
+        # Number of evaluations and solution error experiment - 1D
+        num_evals_and_error_2D(df_train, model.predict, folder)
 
 
-    # # plot
+
+    # # plot for number of evaluations and error
     # # load data
     # folder = "svr"
     # files = ["error_x", "error_val", "evals"]
@@ -737,6 +559,24 @@ def main():
     # for file in files:
     #     data[file] = pd.read_csv("Data"+"\\"+folder+"\\"+file+".csv")
     # plot_num_evals_and_error_1D(data["evals"], data["error_x"], data["error_val"])
+
+    # # plot for warm starting
+    # # load data
+    # folder_warm = "dct_warm"
+    # folder_comp = "dct"
+    # files = ["error_x", "error_val", "evals"]
+    # data_merged = {}
+    # for file in files:
+    #     # merge pd dataframes along columns
+    #     warm = pd.read_csv("Data"+"\\"+folder_warm+"\\"+file+".csv")
+    #     comp = pd.read_csv("Data"+"\\"+folder_comp+"\\"+file+".csv")
+    #     merged = pd.concat([warm, comp], axis=1)
+    #     data_merged[file] = merged
+    # plot_warm_starting(data_merged["evals"], data_merged["error_x"], data_merged["error_val"])
+
+
+
+    #############################
 
     # visualize regressor
     # visualize_regressor(df_train, model)
