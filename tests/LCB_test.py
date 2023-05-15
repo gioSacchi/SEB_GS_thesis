@@ -10,9 +10,9 @@ def exact(mu, sigma, dist, lam, y_prim, beta):
     return mean - beta*np.sqrt(var)
 
 def short_exact(mu, sigma, dist, lam, y_prim, beta):
-    f1 = y_prim**2 - 2*y_prim*mu + mu**2 + sigma**2
+    f1 = (y_prim - mu)**2 + sigma**2
     mean = dist + lam*f1
-    var = 2*lam**2*sigma**2*(2*y_prim**2 - 4*y_prim*mu+2*mu**2+sigma**2)
+    var = 2*lam**2*sigma**2*(2*(y_prim - mu)**2+sigma**2)
     return mean - beta*np.sqrt(var)
 
 def approx(dist, lam, y_prim, rv, beta):

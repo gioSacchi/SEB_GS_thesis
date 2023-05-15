@@ -64,7 +64,7 @@ def OG_test():
 def explicit(c_OPT, y_prim, lam, mu, sigma, dist, CDF_diff, PDF_UB, PDF_LB, UB, LB):
     if sigma == 0:
         return 0
-    first_term = c_OPT-dist+ lam*(2*y_prim*mu-y_prim**2-mu**2-sigma**2)
+    first_term = c_OPT-dist- lam*((y_prim-mu)**2+sigma**2)
     second_term = lam*sigma*(mu+UB-2*y_prim)
     third_term = lam*sigma*(2*y_prim-mu-LB)
     EI_exact = first_term*CDF_diff + second_term*PDF_UB + third_term*PDF_LB
